@@ -21,8 +21,8 @@ Shtusha-Kutusha — это удобный бот для установки на�
 ### 1. Клонируйте репозиторий
 
 ```bash
-git clone https://github.com/username/репозиторий.git
-cd папка
+git clone https://github.com/Wlwool/shtusha-kutusha.git
+cd shtusha-kutusha
 ```
 
 ### 2. Настройка переменных окружения
