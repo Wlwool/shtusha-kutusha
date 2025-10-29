@@ -1,10 +1,4 @@
-/.idea/.gitignore
 /.env
-/.idea/vcs.xml
+/.idea
 /tests/bot.db
-/.idea/misc.xml
-/.idea/modules.xml
-/.idea/inspectionProfiles/profiles_settings.xml
-/.idea/inspectionProfiles/Project_Default.xml
-/.idea/discord_bot_reminder.iml
 /bot/bot.log
