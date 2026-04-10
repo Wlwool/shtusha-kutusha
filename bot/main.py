@@ -8,9 +8,176 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dateparser import parse
 from typing import List
 from dotenv import load_dotenv
-from bot.database import init_db, add_reminder, get_pending_reminders, delete_reminder
+from bot.database import init_db, add_reminder, get_pending_reminders, delete_reminder, get_user_reminders, update_reminder, get_reminder
+from bot.help_cmd import register_help_command
 
 discord.voice_client.VoiceClient.warn_nacl = False
+
+REMINDERS_PER_PAGE = 10
+
+
+class EditReminderModal(discord.ui.Modal, title="Редактировать напоминание"):
+    time_input = discord.ui.TextInput(
+        label="Время (например: 18:00 или in 2 hours)",
+        style=discord.TextStyle.short,
+        required=True
+    )
+    message_input = discord.ui.TextInput(
+        label="Текст напоминания",
+        style=discord.TextStyle.paragraph,
+        required=True
+    )
+
+    def __init__(self, reminder_id: int, current_time: str, current_message: str, view: "ReminderListView"):
+        super().__init__()
+        self.reminder_id = reminder_id
+        self.view = view
+        self.time_input.default = current_time
+        self.message_input.default = current_message
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            now = datetime.datetime.now()
+            new_time = parse(self.time_input.value, settings={'RELATIVE_BASE': now})
+            if not new_time or new_time < now:
+                await interaction.response.send_message("Укажите корректное время в будущем", ephemeral=True)
+                return
+
+            await update_reminder(self.reminder_id, reminder_time=new_time, message=self.message_input.value)
+            try:
+                bot.scheduler.remove_job(str(self.reminder_id))
+            except Exception:
+                pass
+            bot.scheduler.add_job(
+                send_reminder, 'date', run_date=new_time,
+                args=(interaction.user.id, interaction.channel.id, self.message_input.value, self.reminder_id),
+                id=str(self.reminder_id)
+            )
+            logger.info(f"Edited reminder {self.reminder_id} by user {interaction.user.id}")
+
+            # Обновить view
+            reminders, total = await get_user_reminders(interaction.user.id, REMINDERS_PER_PAGE, self.view.offset)
+            self.view.reminders = reminders
+            self.view.total = total
+            self.view.clear_items()
+            self.view._build_buttons()
+            embed = self.view._build_embed()
+            await interaction.response.edit_message(embed=embed, view=self.view)
+        except Exception as e:
+            logger.error(f"Error editing reminder {self.reminder_id}: {str(e)}")
+            await interaction.response.send_message(f"Ошибка: {str(e)}", ephemeral=True)
+
+
+class ReminderListView(discord.ui.View):
+    """Пагинации списка напоминаний с кнопками удаления и редактирования"""
+    def __init__(self, user_id: int, reminders: list, total: int, offset: int = 0):
+        super().__init__(timeout=120)
+        self.user_id = user_id
+        self.reminders = reminders
+        self.total = total
+        self.offset = offset
+        self._build_buttons()
+
+    def _build_buttons(self):
+        """Кнопки: удаление, редактирование, пагинация"""
+        for r in self.reminders:
+            rid = r[0]
+            # Кнопка удаления
+            del_btn = discord.ui.Button(label=f"🗑️ {rid}", style=discord.ButtonStyle.red, custom_id=f"del:{rid}")
+            del_btn.callback = self._make_delete_callback(rid)
+            self.add_item(del_btn)
+            # Кнопка редактирования
+            edit_btn = discord.ui.Button(label=f"✏️ {rid}", style=discord.ButtonStyle.secondary, custom_id=f"edit:{rid}")
+            edit_btn.callback = self._make_edit_callback(rid)
+            self.add_item(edit_btn)
+
+        prev_btn = discord.ui.Button(label="⬅️", style=discord.ButtonStyle.secondary, custom_id="prev", disabled=self.offset == 0)
+        prev_btn.callback = self.prev_page
+        self.add_item(prev_btn)
+
+        next_btn = discord.ui.Button(label="➡️", style=discord.ButtonStyle.secondary, custom_id="next", disabled=self.offset + REMINDERS_PER_PAGE >= self.total)
+        next_btn.callback = self.next_page
+        self.add_item(next_btn)
+
+    def _make_delete_callback(self, reminder_id: int):
+        async def callback(interaction: discord.Interaction):
+            await delete_reminder(reminder_id)
+            try:
+                bot.scheduler.remove_job(str(reminder_id))
+            except Exception:
+                pass
+            logger.info(f"Deleted reminder {reminder_id} by user {self.user_id}")
+
+            reminders, total = await get_user_reminders(self.user_id, REMINDERS_PER_PAGE, self.offset)
+            self.reminders = reminders
+            self.total = total
+            self.clear_items()
+            self._build_buttons()
+            embed = self._build_embed()
+            await interaction.response.edit_message(embed=embed, view=self)
+        return callback
+
+    def _make_edit_callback(self, reminder_id: int):
+        async def callback(interaction: discord.Interaction):
+            reminder = await get_reminder(reminder_id)
+            if not reminder:
+                await interaction.response.send_message("Напоминание не найдено", ephemeral=True)
+                return
+            _rid, _uid, _cid, r_time, r_msg, _ = reminder
+            dt = datetime.datetime.fromisoformat(r_time)
+            time_str = dt.strftime("%d-%m-%Y %H:%M")
+
+            modal = EditReminderModal(
+                reminder_id=reminder_id,
+                current_time=time_str,
+                current_message=r_msg,
+                view=self
+            )
+            await interaction.response.send_modal(modal)
+        return callback
+
+    async def prev_page(self, interaction: discord.Interaction):
+        self.offset = max(0, self.offset - REMINDERS_PER_PAGE)
+        await self._update_view(interaction)
+
+    async def next_page(self, interaction: discord.Interaction):
+        self.offset += REMINDERS_PER_PAGE
+        await self._update_view(interaction)
+
+    async def _update_view(self, interaction: discord.Interaction):
+        reminders, _ = await get_user_reminders(self.user_id, REMINDERS_PER_PAGE, self.offset)
+        self.reminders = reminders
+        self.clear_items()
+        self._build_buttons()
+        embed = self._build_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("Это не ваши напоминания", ephemeral=True)
+            return False
+        return True
+
+    def _build_embed(self) -> discord.Embed:
+        embed = discord.Embed(title="Ваши напоминания", color=discord.Color.blue())
+        page_num = (self.offset // REMINDERS_PER_PAGE) + 1
+        total_pages = max(1, (self.total + REMINDERS_PER_PAGE - 1) // REMINDERS_PER_PAGE)
+        embed.set_footer(text=f"Страница {page_num}/{total_pages} • Всего: {self.total}")
+
+        if not self.reminders:
+            embed.description = "Нет активных напоминаний"
+            return embed
+
+        for r in self.reminders:
+            rid, reminder_time, message, channel_id, _ = r
+            dt = datetime.datetime.fromisoformat(reminder_time)
+            time_str = dt.strftime("%d-%m-%Y %H:%M")
+            embed.add_field(
+                name=f"`#{rid}` — {time_str}",
+                value=message[:100] + ("..." if len(message) > 100 else ""),
+                inline=False
+            )
+        return embed
 
 
 def is_admin():
@@ -52,7 +219,7 @@ class MyBot(commands.Bot):
         logger.info('Инициализация бота и базы данных ...')
         await init_db()
         self.scheduler.start()
-        # await self.load_extension('bot.tasks')
+        register_help_command(self)
         await self.tree.sync()
         logger.info('Бот готов к работе')
 
@@ -134,33 +301,12 @@ async def send_reminder(user_id: int, channel_id: int, message: str, reminder_id
 
 
 @bot.hybrid_command()
-@is_admin()
-async def badge(ctx: commands.Context):
-    """Команда доступная админу"""
-    try:
-        embed = discord.Embed(
-            title="Program Ran Successfully",
-            description=(
-                "**+** You have ran the bot correctly and have claimed your Discord Developer Badge.\n\n"
-                "**+** It may take up to 24 hours or a tiny bit more for your badge to shop up here "
-                "(https://discord.com/developers/active-developer)\n\n**+**"
-            ),
-            colour=0x00f53d
-        )
-        embed.set_footer(text="This bot started")
-        await ctx.send(embed=embed)
-        logger.info(f"Active developer badge command used by {ctx.author.id}")
-    except Exception as e:
-        logger.error(f"Error in active_developer_badge: {str(e)}")
-
-@badge.error
-async def active_developer_badge_error(ctx: commands.Context, error):
-
-    if isinstance(error, commands.CheckFailure):
-        await ctx.send("❌ Эта команда доступна только администратору.", ephemeral=True)
-    else:
-        logger.error(f"Error in active_developer_badge: {str(error)}")
-        await ctx.send("❌ Произошла ошибка при выполнении команды.", ephemeral=True)
+async def list_reminders(ctx: commands.Context):
+    """Просмотреть свои напоминания"""
+    reminders, total = await get_user_reminders(ctx.author.id, REMINDERS_PER_PAGE, 0)
+    view = ReminderListView(ctx.author.id, reminders, total, 0)
+    embed = view._build_embed()
+    await ctx.send(embed=embed, view=view, ephemeral=True)
 
 
 @bot.hybrid_command()
