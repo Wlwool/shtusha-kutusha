@@ -1,0 +1,29 @@
+[project]
+name = "shtusha-kutusha"
+version = "0.1.2"
+description = "Discord reminder bot"
+requires-python = ">=3.13"
+dependencies = [
+    "discord.py==2.7.1",
+    "aiohttp==3.13.5",
+    "aiosqlite==0.21.0",
+    "APScheduler==3.11.0",
+    "dateparser==1.2.1",
+    "python-dotenv==1.2.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.25.3",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.25.3",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
