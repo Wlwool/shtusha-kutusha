@@ -1,8 +1,9 @@
 # Shtusha-Kutusha Bot 🤖
 
 [![Docker](https://img.shields.io/badge/Docker-Enabled-blue.svg)](https://www.docker.com/)
-[![Python](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/)
-[![Discord.py](https://img.shields.io/badge/discord.py-2.0%2B-blue.svg)](https://discordpy.readthedocs.io/)
+[![Python](https://img.shields.io/badge/Python-3.13-green.svg)](https://www.python.org/)
+[![Discord.py](https://img.shields.io/badge/discord.py-2.7.1-blue.svg)](https://discordpy.readthedocs.io/)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 
 Shtusha-Kutusha — это удобный бот для установки напоминаний. Он позволяет устанавливать напоминания на определённое время или через промежуток времени.
 
@@ -36,9 +37,22 @@ DISCORD_TOKEN=ваш_токен
 ADMIN_ID=ваш_id
 ```
 
-### 3. Настройка переменных окружения
+### 3. Запуск через Docker
 ```bash
 docker-compose up -d --build
+```
+
+### Локальная разработка (через uv)
+
+```bash
+# Установка зависимостей
+uv sync --dev
+
+# Запуск бота
+uv run python bot/main.py
+
+# Запуск тестов
+uv run pytest tests/ -v
 ```
 
 -------------------------------

@@ -1,4 +1,8 @@
 /.env
 /.idea
-/tests/bot.db
 /bot/bot.log
+*.db
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
