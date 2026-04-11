@@ -1,7 +1,11 @@
 from __future__ import annotations
+
 import datetime
 import logging
+
 import discord
+from apscheduler.jobstores.base import ConflictingIdError, JobLookupError
+
 from bot.database import delete_reminder, get_reminder, get_user_reminders, update_reminder
 from bot.utils import parse_time
 
@@ -10,8 +14,43 @@ logger = logging.getLogger(__name__)
 REMINDERS_PER_PAGE = 10
 
 
+def _scheduler_remove(bot, reminder_id: int) -> None:
+    """Удалить задачу из scheduler, игнорируя 'не найдено'."""
+    try:
+        bot.scheduler.remove_job(str(reminder_id))
+        logger.info("Removed scheduler job %s", reminder_id)
+    except JobLookupError:
+        logger.debug("Scheduler job %s already fired or removed", reminder_id)
+
+
+def _scheduler_add(bot, reminder_id: int, run_date, args) -> None:
+    """Добавить задачу, заменяя существующую с тем же ID."""
+    try:
+        bot.scheduler.add_job(
+            bot.send_reminder,
+            "date",
+            run_date=run_date,
+            args=args,
+            id=str(reminder_id),
+            replace_existing=True,
+        )
+        logger.info("Added scheduler job %s for %s", reminder_id, run_date)
+    except ConflictingIdError:
+        # На случай гонки — удалить и добавить заново
+        _scheduler_remove(bot, reminder_id)
+        bot.scheduler.add_job(
+            bot.send_reminder,
+            "date",
+            run_date=run_date,
+            args=args,
+            id=str(reminder_id),
+        )
+        logger.info("Re-added scheduler job %s for %s", reminder_id, run_date)
+
+
 class EditReminderModal(discord.ui.Modal, title="Редактировать напоминание"):
     """Модальное окно для редактирования напоминания."""
+
     time_input = discord.ui.TextInput(
         label="Время (например: 18:00 или in 2 hours)",
         style=discord.TextStyle.short,
@@ -52,7 +91,6 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
                 reminder_time=new_time,
                 message=self.message_input.value,
             )
-            from apscheduler.triggers.date import DateTrigger  # noqa: PLC0415
 
             job_args = (
                 interaction.user.id,
@@ -60,27 +98,33 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
                 self.message_input.value,
                 self.reminder_id,
             )
+            job_id = str(self.reminder_id)
+
             try:
-                bot.scheduler.modify_job(
-                    str(self.reminder_id),
-                    trigger=DateTrigger(run_date=new_time),
-                    args=job_args,
-                )
-                logger.info("Edited scheduler job %s for user %s", self.reminder_id, interaction.user.id)
-            except LookupError:
-                try:
-                    bot.scheduler.remove_job(str(self.reminder_id))
-                except LookupError:
-                    pass
-                bot.scheduler.add_job(
-                    bot.send_reminder,
-                    "date",
+                # reschedule_job корредно вычисляет next_run_time
+                bot.scheduler.reschedule_job(
+                    job_id,
+                    trigger="date",
                     run_date=new_time,
-                    args=job_args,
-                    id=str(self.reminder_id),
                 )
-                logger.info("Re-created scheduler job %s for user %s", self.reminder_id, interaction.user.id)
-            logger.info("Edited reminder %s by user %s", self.reminder_id, interaction.user.id)
+                # отдельно обновить аргументы (сообщение, channel_id и т.д.)
+                bot.scheduler.modify_job(job_id, args=job_args)
+                logger.info(
+                    "Rescheduled job %s to %s for user %s",
+                    self.reminder_id,
+                    new_time,
+                    interaction.user.id,
+                )
+            except JobLookupError:
+                # Задача уже выполнилась или удалена — пересоздаём
+                logger.warning(
+                    "Scheduler job %s not found, re-creating", self.reminder_id
+                )
+                _scheduler_add(bot, self.reminder_id, new_time, job_args)
+
+            logger.info(
+                "Edited reminder %s by user %s", self.reminder_id, interaction.user.id
+            )
 
             reminders, total = await get_user_reminders(
                 interaction.user.id, REMINDERS_PER_PAGE, self.view.offset
@@ -150,10 +194,7 @@ class ReminderListView(discord.ui.View):
             from bot.main import bot  # noqa: PLC0415
 
             await delete_reminder(reminder_id)
-            try:
-                bot.scheduler.remove_job(str(reminder_id))
-            except Exception as e:
-                logger.debug("Could not remove scheduler job %s: %s", reminder_id, e)
+            _scheduler_remove(bot, reminder_id)
             logger.info("Deleted reminder %s by user %s", reminder_id, self.user_id)
 
             reminders, total = await get_user_reminders(

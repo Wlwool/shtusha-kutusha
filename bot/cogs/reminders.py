@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING
 from discord.ext import commands
 from bot.database import add_reminder, get_user_reminders
-from bot.ui.reminder_view import REMINDERS_PER_PAGE, ReminderListView
+from bot.ui.reminder_view import REMINDERS_PER_PAGE, ReminderListView, _scheduler_add
 from bot.utils import parse_time
 
 if TYPE_CHECKING:
@@ -15,14 +15,12 @@ logger = logging.getLogger(__name__)
 
 class RemindersCog(commands.Cog, name="Напоминания"):
     """Команды для создания и просмотра напоминаний."""
-
     def __init__(self, bot: MyBot) -> None:
         self.bot = bot
 
     @commands.hybrid_command()
     async def remind(self, ctx: commands.Context, time_str: str, *, message: str) -> None:
         """Установить напоминание.
-
         Примеры:
             /remind in 1 hour Приготовить пюрешку
             /remind через 30 минут Позвонить тёще
@@ -44,12 +42,11 @@ class RemindersCog(commands.Cog, name="Напоминания"):
             reminder_id = await add_reminder(
                 ctx.author.id, ctx.channel.id, reminder_time, message
             )
-            self.bot.scheduler.add_job(
-                self.bot.send_reminder,
-                "date",
-                run_date=reminder_time,
-                args=(ctx.author.id, ctx.channel.id, message, reminder_id),
-                id=str(reminder_id),
+            _scheduler_add(
+                self.bot,
+                reminder_id,
+                reminder_time,
+                (ctx.author.id, ctx.channel.id, message, reminder_id),
             )
             await ctx.send(
                 f"Напоминание установлено на {reminder_time.strftime('%d-%m-%Y %H:%M')}"

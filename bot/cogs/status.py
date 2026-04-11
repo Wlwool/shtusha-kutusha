@@ -8,6 +8,7 @@ import discord
 from discord import Activity, ActivityType
 from discord.ext import commands, tasks
 from bot.database import get_pending_reminders
+from bot.ui.reminder_view import _scheduler_add
 
 if TYPE_CHECKING:
     from bot.main import MyBot
@@ -67,17 +68,18 @@ class StatusCog(commands.Cog, name="Статус"):
         try:
             reminders = await get_pending_reminders()
             logger.info("Восстановление %d напоминания из базы данных", len(reminders))
+            restored = 0
             for reminder in reminders:
                 reminder_id, user_id, channel_id, reminder_time, message, _ = reminder
                 reminder_time = datetime.datetime.fromisoformat(reminder_time)
-                self.bot.scheduler.add_job(
-                    self.bot.send_reminder,
-                    "date",
-                    run_date=reminder_time,
-                    args=(user_id, channel_id, message, reminder_id),
-                    id=str(reminder_id),
+                _scheduler_add(
+                    self.bot,
+                    reminder_id,
+                    reminder_time,
+                    (user_id, channel_id, message, reminder_id),
                 )
-            logger.info("Успешно восстановлены все напоминания")
+                restored += 1
+            logger.info("Успешно восстановлены %d напоминаний", restored)
         except Exception as e:
             logger.error("Ошибка восстановления напоминаний: %s", e)
 
