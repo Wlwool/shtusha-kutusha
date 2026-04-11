@@ -2,7 +2,7 @@ import os
 import aiosqlite
 import datetime
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 DB_DIR = Path(os.getenv("DB_DIR", Path(__file__).parent))
 DB_NAME = DB_DIR / "bot.db"
@@ -64,7 +64,11 @@ async def get_user_reminders(user_id: int, limit: int = 10, offset: int = 0) -> 
         return await cursor.fetchall(), total
 
 
-async def update_reminder(reminder_id: int, reminder_time: datetime.datetime = None, message: str = None) -> bool:
+async def update_reminder(
+    reminder_id: int,
+    reminder_time: Optional[datetime.datetime] = None,
+    message: Optional[str] = None,
+) -> bool:
     """Обновить время или текст напоминания. Возвращает True если запись найдена"""
     async with aiosqlite.connect(DB_NAME) as db:
         if reminder_time is not None and message is not None:
