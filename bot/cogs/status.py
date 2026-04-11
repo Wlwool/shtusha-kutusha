@@ -70,13 +70,13 @@ class StatusCog(commands.Cog, name="Статус"):
             logger.info("Восстановление %d напоминания из базы данных", len(reminders))
             restored = 0
             for reminder in reminders:
-                reminder_id, user_id, channel_id, reminder_time, message, _ = reminder
+                reminder_id, user_id, channel_id, reminder_time, message, _created, version = reminder
                 reminder_time = datetime.datetime.fromisoformat(reminder_time)
                 _scheduler_add(
                     self.bot,
                     reminder_id,
                     reminder_time,
-                    (user_id, channel_id, message, reminder_id),
+                    (user_id, channel_id, message, reminder_id, version),
                 )
                 restored += 1
             logger.info("Успешно восстановлены %d напоминаний", restored)

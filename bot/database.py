@@ -16,7 +16,12 @@ async def init_db():
                            channel_id INTEGER NOT NULL,
                            reminder_time TEXT NOT NULL,
                            message TEXT NOT NULL,
-                           created_at TEXT NOT NULL)''')
+                           created_at TEXT NOT NULL,
+                           version INTEGER NOT NULL DEFAULT 1)''')
+        try:
+            await db.execute('ALTER TABLE reminders ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
+        except Exception:
+            pass
         await db.commit()
 
 async def add_reminder(user_id: int, channel_id: int, reminder_time: datetime.datetime, message: str) -> int:
@@ -49,17 +54,19 @@ async def get_user_reminders(user_id: int, limit: int = 10, offset: int = 0) -> 
     """
     async with aiosqlite.connect(DB_NAME) as db:
         # Общее количество
-        cursor = await db.execute('SELECT COUNT(*) FROM reminders WHERE user_id = ?', (user_id,))
+        cursor = await db.execute(
+            'SELECT COUNT(*) FROM reminders WHERE user_id = ? AND reminder_time > ?',
+            (user_id, datetime.datetime.now().isoformat()))
         total = (await cursor.fetchone())[0]
 
         # Записи с пагинацией
         cursor = await db.execute(
             '''SELECT id, reminder_time, message, channel_id, created_at
                FROM reminders
-               WHERE user_id = ?
+               WHERE user_id = ? AND reminder_time > ?
                ORDER BY reminder_time ASC
                LIMIT ? OFFSET ?''',
-            (user_id, limit, offset)
+            (user_id, datetime.datetime.now().isoformat(), limit, offset)
         )
         return await cursor.fetchall(), total
 
@@ -67,29 +74,34 @@ async def get_user_reminders(user_id: int, limit: int = 10, offset: int = 0) -> 
 async def update_reminder(
     reminder_id: int,
     reminder_time: Optional[datetime.datetime] = None,
-    message: Optional[str] = None,
-) -> bool:
-    """Обновить время или текст напоминания. Возвращает True если запись найдена"""
+    message: Optional[str] = None,) -> int | None:
+    """Обновить напоминание.
+    Возвращает новый version или None если не найдено.
+    """
     async with aiosqlite.connect(DB_NAME) as db:
         if reminder_time is not None and message is not None:
             await db.execute(
-                'UPDATE reminders SET reminder_time = ?, message = ? WHERE id = ?',
+                'UPDATE reminders SET reminder_time = ?, message = ?, version = version + 1 WHERE id = ?',
                 (reminder_time.isoformat(), message, reminder_id)
             )
         elif reminder_time is not None:
             await db.execute(
-                'UPDATE reminders SET reminder_time = ? WHERE id = ?',
+                'UPDATE reminders SET reminder_time = ?, version = version + 1 WHERE id = ?',
                 (reminder_time.isoformat(), reminder_id)
             )
         elif message is not None:
             await db.execute(
-                'UPDATE reminders SET message = ? WHERE id = ?',
+                'UPDATE reminders SET message = ?, version = version + 1 WHERE id = ?',
                 (message, reminder_id)
             )
         else:
-            return False
+            return None
         await db.commit()
-        return db.total_changes > 0
+        if db.total_changes == 0:
+            return None
+        cursor = await db.execute('SELECT version FROM reminders WHERE id = ?', (reminder_id,))
+        row = await cursor.fetchone()
+        return row[0] if row else None
 
 
 async def get_reminder(reminder_id: int) -> Tuple:

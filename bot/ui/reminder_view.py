@@ -1,11 +1,8 @@
 from __future__ import annotations
-
 import datetime
 import logging
-
 import discord
 from apscheduler.jobstores.base import ConflictingIdError, JobLookupError
-
 from bot.database import delete_reminder, get_reminder, get_user_reminders, update_reminder
 from bot.utils import parse_time
 
@@ -16,11 +13,14 @@ REMINDERS_PER_PAGE = 10
 
 def _scheduler_remove(bot, reminder_id: int) -> None:
     """Удалить задачу из scheduler, игнорируя 'не найдено'."""
+    jobs = [job.id for job in bot.scheduler.get_jobs()]
+    logger.info("Current scheduler jobs: %s", jobs)
     try:
         bot.scheduler.remove_job(str(reminder_id))
         logger.info("Removed scheduler job %s", reminder_id)
     except JobLookupError:
-        logger.debug("Scheduler job %s already fired or removed", reminder_id)
+        logger.warning("Scheduler job %s not found during remove", reminder_id)
+        # logger.debug("Scheduler job %s already fired or removed", reminder_id)
 
 
 def _scheduler_add(bot, reminder_id: int, run_date, args) -> None:
@@ -36,7 +36,6 @@ def _scheduler_add(bot, reminder_id: int, run_date, args) -> None:
         )
         logger.info("Added scheduler job %s for %s", reminder_id, run_date)
     except ConflictingIdError:
-        # На случай гонки — удалить и добавить заново
         _scheduler_remove(bot, reminder_id)
         bot.scheduler.add_job(
             bot.send_reminder,
@@ -50,7 +49,6 @@ def _scheduler_add(bot, reminder_id: int, run_date, args) -> None:
 
 class EditReminderModal(discord.ui.Modal, title="Редактировать напоминание"):
     """Модальное окно для редактирования напоминания."""
-
     time_input = discord.ui.TextInput(
         label="Время (например: 18:00 или in 2 hours)",
         style=discord.TextStyle.short,
@@ -64,20 +62,20 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
 
     def __init__(
         self,
+        bot,
         reminder_id: int,
         current_time: str,
         current_message: str,
         view: ReminderListView,
     ) -> None:
         super().__init__()
+        self.bot = bot
         self.reminder_id = reminder_id
         self.view = view
         self.time_input.default = current_time
         self.message_input.default = current_message
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        from bot.main import bot  # noqa: PLC0415
-
         try:
             new_time = parse_time(self.time_input.value)
             if not new_time or new_time < datetime.datetime.now():
@@ -86,41 +84,26 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
                 )
                 return
 
-            await update_reminder(
+            new_version = await update_reminder(
                 self.reminder_id,
                 reminder_time=new_time,
                 message=self.message_input.value,
             )
+            if new_version is None:
+                await interaction.response.send_message("Напоминание не найдено",
+                                                        ephemeral=True)
+                return
 
             job_args = (
                 interaction.user.id,
                 interaction.channel.id,
                 self.message_input.value,
                 self.reminder_id,
+                new_version,
             )
-            job_id = str(self.reminder_id)
 
-            try:
-                # reschedule_job корредно вычисляет next_run_time
-                bot.scheduler.reschedule_job(
-                    job_id,
-                    trigger="date",
-                    run_date=new_time,
-                )
-                # отдельно обновить аргументы (сообщение, channel_id и т.д.)
-                bot.scheduler.modify_job(job_id, args=job_args)
-                logger.info(
-                    "Rescheduled job %s to %s for user %s",
-                    self.reminder_id,
-                    new_time,
-                    interaction.user.id,
-                )
-            except JobLookupError:
-                # Задача уже выполнилась или удалена — пересоздаём
-                logger.warning(
-                    "Scheduler job %s not found, re-creating", self.reminder_id
-                )
-                _scheduler_add(bot, self.reminder_id, new_time, job_args)
+            _scheduler_remove(self.bot, self.reminder_id)
+            _scheduler_add(self.bot, self.reminder_id, new_time, job_args)
 
             logger.info(
                 "Edited reminder %s by user %s", self.reminder_id, interaction.user.id
@@ -142,11 +125,11 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
 
 class ReminderListView(discord.ui.View):
     """Пагинация списка напоминаний с кнопками удаления и редактирования."""
-
     def __init__(
-        self, user_id: int, reminders: list, total: int, offset: int = 0
+        self, bot, user_id: int, reminders: list, total: int, offset: int = 0
     ) -> None:
         super().__init__(timeout=120)
+        self.bot = bot
         self.user_id = user_id
         self.reminders = reminders
         self.total = total
@@ -191,10 +174,9 @@ class ReminderListView(discord.ui.View):
 
     def _make_delete_callback(self, reminder_id: int):
         async def callback(interaction: discord.Interaction) -> None:
-            from bot.main import bot  # noqa: PLC0415
 
             await delete_reminder(reminder_id)
-            _scheduler_remove(bot, reminder_id)
+            _scheduler_remove(self.bot, reminder_id)
             logger.info("Deleted reminder %s by user %s", reminder_id, self.user_id)
 
             reminders, total = await get_user_reminders(
@@ -217,11 +199,12 @@ class ReminderListView(discord.ui.View):
                     "Напоминание не найдено", ephemeral=True
                 )
                 return
-            _rid, _uid, _cid, r_time, r_msg, _ = reminder
+            _rid, _uid, _cid, r_time, r_msg, _created, _version = reminder
             dt = datetime.datetime.fromisoformat(r_time)
             time_str = dt.strftime("%d-%m-%Y %H:%M")
 
             modal = EditReminderModal(
+                bot=self.bot,
                 reminder_id=reminder_id,
                 current_time=time_str,
                 current_message=r_msg,

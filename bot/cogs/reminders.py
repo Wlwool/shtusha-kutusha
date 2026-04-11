@@ -46,7 +46,7 @@ class RemindersCog(commands.Cog, name="Напоминания"):
                 self.bot,
                 reminder_id,
                 reminder_time,
-                (ctx.author.id, ctx.channel.id, message, reminder_id),
+                (ctx.author.id, ctx.channel.id, message, reminder_id, 1),
             )
             await ctx.send(
                 f"Напоминание установлено на {reminder_time.strftime('%d-%m-%Y %H:%M')}"
@@ -62,7 +62,7 @@ class RemindersCog(commands.Cog, name="Напоминания"):
     async def list_reminders(self, ctx: commands.Context) -> None:
         """Просмотреть свои напоминания."""
         reminders, total = await get_user_reminders(ctx.author.id, REMINDERS_PER_PAGE, 0)
-        view = ReminderListView(ctx.author.id, reminders, total, 0)
+        view = ReminderListView(self.bot, ctx.author.id, reminders, total, 0)
         embed = view._build_embed()
         await ctx.send(embed=embed, view=view, ephemeral=True)
 

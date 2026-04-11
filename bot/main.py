@@ -4,7 +4,7 @@ import discord
 from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
-from bot.database import init_db
+from bot.database import init_db, delete_reminder, get_reminder
 from bot.help_cmd import register_help_command
 from bot.log_config import setup_logging
 from bot.utils import parse_time as _parse_time  # noqa: F401 для тестов
@@ -41,12 +41,20 @@ class MyBot(commands.Bot):
         logger.info('Бот готов к работе')
 
     async def send_reminder(
-        self, user_id: int, channel_id: int, message: str, reminder_id: int
-    ) -> None:
-        """Отправить напоминание пользователю и удалить из БД."""
-        from bot.database import delete_reminder  # noqa: PLC0415
-
+            self, user_id: int, channel_id: int, message: str, reminder_id: int,
+            version: int) -> None:
         try:
+            reminder = await get_reminder(reminder_id)
+            if not reminder:
+                logger.info("Reminder %d already deleted, skipping", reminder_id)
+                return
+
+            _rid, _uid, _cid, _time, _msg, _created, db_version = reminder
+            if db_version != version:
+                logger.info("Reminder %d version mismatch (%d != %d), skipping stale job",
+                            reminder_id, version, db_version)
+                return
+
             channel = self.get_channel(channel_id)
             user = self.get_user(user_id)
             if channel and user:
@@ -56,8 +64,7 @@ class MyBot(commands.Bot):
             else:
                 logger.warning(
                     "Не удается отправить напоминание %d - канал или юзер не найдены",
-                    reminder_id,
-                )
+                    reminder_id)
         except Exception as e:
             logger.error("Ошибка отправки напоминания %d: %s", reminder_id, e)
 
