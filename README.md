@@ -1,4 +1,4 @@
-# Shtusha-Kutusha Bot 🤖
+# Shtusha-Kutusha Bot
 
 [![Docker](https://img.shields.io/badge/Docker-Enabled-blue.svg)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.13-green.svg)](https://www.python.org/)
