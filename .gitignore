@@ -1,7 +1,9 @@
 /.env
 /.idea
 /bot/bot.log
+bot/bot.db
 *.db
+*.log
 .venv/
 __pycache__/
 *.pyc

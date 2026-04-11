@@ -12,10 +12,10 @@ def register_help_command(bot: commands.Bot):
             value=(
                 "Установить напоминание.\n"
                 "Примеры:\n"
-                "`/remind in 1 hour Приготовить ужин`\n"
-                "`/remind через 30 минут Позвонить маме`\n"
-                "`/remind 18:30 Встреча с коллегами`\n"
-                "`/remind tomorrow at 9am Утренняя планерка`"
+                "`/remind in 1 hour Приготовить пюрешку`\n"
+                "`/remind через 30 минут Позвонить тёще`\n"
+                "`/remind 18:30 Встреча с дружочками-пирожочками`\n"
+                "`/remind tomorrow at 9am Погладить кота`"
             ),
             inline=False
         )
@@ -28,7 +28,7 @@ def register_help_command(bot: commands.Bot):
 
         embed.add_field(
             name="/help_remind",
-            value="Показать это сообщение с описанием команд.",
+            value="Инструкция, как пользоваться ботом",
             inline=False
         )
 
@@ -36,7 +36,7 @@ def register_help_command(bot: commands.Bot):
             name="Форматы времени",
             value=(
                 "Относительное: `in 1 hour`, `через 30 минут`, `tomorrow at 9am`\n"
-                "Абсолютное: `18:30`, `2025-03-15 09:00`"
+                "Абсолютное: `18:30`, `15.03.2025 09:00`, `15/03/2025 09:00`, `15-03-2025 09:00`"
             ),
             inline=False
         )
