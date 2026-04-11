@@ -1,13 +1,10 @@
-"""Тесты редактирования напоминаний через EditReminderModal."""
-
+"""Тесты редактирования и удаления напоминаний через scheduler."""
 from __future__ import annotations
-
 import datetime
 from unittest.mock import AsyncMock
 import pytest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.date import DateTrigger
-
+from apscheduler.jobstores.base import JobLookupError
 from bot.database import add_reminder, get_reminder, update_reminder
 
 
@@ -42,45 +39,84 @@ async def test_update_reminder_updates_db():
 
 
 @pytest.mark.asyncio
-async def test_scheduler_modify_job_exists():
-    """modify_job вызывается когда job есть в scheduler."""
+async def test_scheduler_reschedule_job_changes_time():
+    """reschedule_job корректно меняет время срабатывания."""
     scheduler = AsyncIOScheduler()
     scheduler.start()
+
+    send_mock = AsyncMock()
+    old_time = datetime.datetime.now() + datetime.timedelta(hours=5)
+    scheduler.add_job(
+        send_mock, "date", run_date=old_time,
+        args=(1, 2, "msg", 1), id="1",
+    )
+
+    # Перенос на другое время
+    new_time = datetime.datetime.now() + datetime.timedelta(minutes=1)
+    scheduler.reschedule_job("1", trigger="date", run_date=new_time)
+
+    job = scheduler.get_job("1")
+    assert job is not None
+    assert job.next_run_time is not None
+    # next_run_time может быть timezone-aware, приводим к naive для сравнения
+    next_naive = job.next_run_time.replace(tzinfo=None)
+    assert abs((next_naive - new_time).total_seconds()) < 2
+
+    scheduler.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_scheduler_modify_job_changes_args():
+    """modify_job корректно меняет аргументы задачи."""
+    scheduler = AsyncIOScheduler()
+    scheduler.start()
+
     send_mock = AsyncMock()
     run_date = datetime.datetime.now() + datetime.timedelta(hours=1)
     scheduler.add_job(
         send_mock, "date", run_date=run_date,
-        args=(1, 2, "msg", 1), id="1",)
-    new_time = datetime.datetime.now() + datetime.timedelta(hours=2)
-    scheduler.modify_job("1", trigger=DateTrigger(run_date=new_time), args=(1, 2, "new_msg", 1))
+        args=(1, 2, "old_msg", 1), id="1",
+    )
+
+    scheduler.modify_job("1", args=(1, 2, "new_msg", 1))
+
     job = scheduler.get_job("1")
     assert job is not None
     assert job.args == (1, 2, "new_msg", 1)
+
     scheduler.shutdown(wait=False)
 
 
 @pytest.mark.asyncio
-async def test_scheduler_modify_job_not_found():
-    """LookupError при modify_job для несуществующего job."""
-    scheduler = AsyncIOScheduler()
-
-    with pytest.raises(LookupError):
-        scheduler.modify_job("nonexistent", trigger="date", run_date=datetime.datetime.now())
-
-
-@pytest.mark.asyncio
-async def test_scheduler_add_job_after_remove():
+async def test_scheduler_remove_job():
+    """remove_job удаляет задачу из scheduler."""
     scheduler = AsyncIOScheduler()
     scheduler.start()
+
     send_mock = AsyncMock()
-    run_date = datetime.datetime.now() + datetime.timedelta(minutes=1)
+    run_date = datetime.datetime.now() + datetime.timedelta(hours=1)
     scheduler.add_job(send_mock, "date", run_date=run_date, args=(1,), id="1")
+
+    assert scheduler.get_job("1") is not None
     scheduler.remove_job("1")
     assert scheduler.get_job("1") is None
-    new_time = datetime.datetime.now() + datetime.timedelta(minutes=5)
-    scheduler.add_job(send_mock, "date", run_date=new_time, args=(2,), id="1")
-    job = scheduler.get_job("1")
-    assert job is not None
-    assert job.args == (2,)
 
     scheduler.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_scheduler_remove_nonexistent_job():
+    """remove_job на несуществующей задаче бросает JobLookupError."""
+    scheduler = AsyncIOScheduler()
+
+    with pytest.raises(JobLookupError):
+        scheduler.remove_job("nonexistent")
+
+
+@pytest.mark.asyncio
+async def test_scheduler_reschedule_nonexistent_job():
+    """reschedule_job на несуществующей задаче бросает JobLookupError."""
+    scheduler = AsyncIOScheduler()
+
+    with pytest.raises(JobLookupError):
+        scheduler.reschedule_job("nonexistent", trigger="date", run_date=datetime.datetime.now())
