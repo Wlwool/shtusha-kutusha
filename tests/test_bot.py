@@ -1,25 +1,17 @@
-import pytest
-import asyncio
-import aiosqlite
+import sqlite3
 from datetime import datetime, timedelta
+
+import pytest
+
 from bot.database import (
-    init_db, add_reminder, get_pending_reminders, delete_reminder,
-    get_user_reminders, update_reminder, get_reminder, DB_NAME
+    add_reminder,
+    delete_reminder,
+    get_pending_reminders,
+    get_reminder,
+    get_user_reminders,
+    update_reminder,
 )
-
-
-@pytest.fixture(autouse=True)
-async def setup_db():
-    # Очистка перед тестом
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute('DELETE FROM reminders')
-        await db.commit()
-    await init_db()
-    yield
-    # Очистка после теста
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute('DELETE FROM reminders')
-        await db.commit()
+from bot.utils import parse_time
 
 
 @pytest.mark.asyncio
@@ -43,9 +35,11 @@ async def test_reminder_workflow():
 
 
 @pytest.mark.asyncio
-async def test_invalid_reminder():
-    with pytest.raises(Exception):
-        await add_reminder(None, None, None, None)
+async def test_add_reminder_without_message_fails():
+    """Пустой текст нарушает NOT NULL в таблице."""
+    test_time = datetime.now() + timedelta(hours=1)
+    with pytest.raises(sqlite3.IntegrityError):
+        await add_reminder(123, 456, test_time, None)
 
 
 @pytest.mark.asyncio
@@ -55,7 +49,7 @@ async def test_get_user_reminders_pagination():
 
     # Создаёт 15 напоминаний
     for i in range(15):
-        await add_reminder(user_id, 111, now + timedelta(hours=i+1), f"Reminder {i}")
+        await add_reminder(user_id, 111, now + timedelta(hours=i + 1), f"Reminder {i}")
 
     # Первая страница
     reminders, total = await get_user_reminders(user_id, limit=10, offset=0)
@@ -82,8 +76,8 @@ async def test_update_reminder_time():
     reminder_id = await add_reminder(123, 456, test_time, "Original message")
 
     new_time = datetime.now() + timedelta(hours=5)
-    result = await update_reminder(reminder_id, reminder_time=new_time)
-    assert result is True
+    new_version = await update_reminder(reminder_id, reminder_time=new_time)
+    assert new_version == 2
 
     reminder = await get_reminder(reminder_id)
     assert datetime.fromisoformat(reminder[3]) == new_time
@@ -95,8 +89,8 @@ async def test_update_reminder_message():
     test_time = datetime.now() + timedelta(hours=1)
     reminder_id = await add_reminder(123, 456, test_time, "Original message")
 
-    result = await update_reminder(reminder_id, message="Updated message")
-    assert result is True
+    new_version = await update_reminder(reminder_id, message="Updated message")
+    assert new_version == 2
 
     reminder = await get_reminder(reminder_id)
     assert reminder[4] == "Updated message"
@@ -109,8 +103,10 @@ async def test_update_reminder_both():
     reminder_id = await add_reminder(123, 456, test_time, "Original message")
 
     new_time = datetime.now() + timedelta(hours=3)
-    result = await update_reminder(reminder_id, reminder_time=new_time, message="New message")
-    assert result is True
+    new_version = await update_reminder(
+        reminder_id, reminder_time=new_time, message="New message"
+    )
+    assert new_version == 2
 
     reminder = await get_reminder(reminder_id)
     assert datetime.fromisoformat(reminder[3]) == new_time
@@ -118,9 +114,22 @@ async def test_update_reminder_both():
 
 
 @pytest.mark.asyncio
+async def test_update_reminder_increments_version():
+    """Каждое изменение увеличивает version: по нему отсекаются устаревшие задачи."""
+    test_time = datetime.now() + timedelta(hours=1)
+    reminder_id = await add_reminder(123, 456, test_time, "Original message")
+
+    assert await update_reminder(reminder_id, message="First") == 2
+    assert await update_reminder(reminder_id, message="Second") == 3
+
+    reminder = await get_reminder(reminder_id)
+    assert reminder[6] == 3
+
+
+@pytest.mark.asyncio
 async def test_update_reminder_not_found():
     result = await update_reminder(99999, message="test")
-    assert result is False
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -134,65 +143,50 @@ async def test_delete_reminder():
     assert reminder is None
 
 
-@pytest.mark.asyncio
-async def test_help_command_registration():
-    from bot.help_cmd import register_help_command
-    assert register_help_command is not None
-
-
 def test_parse_time_dd_mm_yyyy_with_time():
     """Формат dd.mm.yyyy HH:MM 25.12.2026 14:30"""
-    from bot.main import _parse_time
-    result = _parse_time("25.12.2026 14:30")
+    result = parse_time("25.12.2026 14:30")
     assert result == datetime(2026, 12, 25, 14, 30)
 
 
 def test_parse_time_dd_mm_yyyy_without_time():
-    from bot.main import _parse_time
-    result = _parse_time("11.04.2026")
+    result = parse_time("11.04.2026")
     assert result == datetime(2026, 4, 11, 0, 0)
 
 
 def test_parse_time_slash_separator():
-    from bot.main import _parse_time
-    result = _parse_time("11/04/2026")
+    result = parse_time("11/04/2026")
     assert result == datetime(2026, 4, 11, 0, 0)
 
 
 def test_parse_time_slash_with_time():
-    from bot.main import _parse_time
-    result = _parse_time("25/12/2026 09:00")
+    result = parse_time("25/12/2026 09:00")
     assert result == datetime(2026, 12, 25, 9, 0)
 
 
 def test_parse_time_relative():
-    from bot.main import _parse_time
-    result = _parse_time("in 2 hours")
+    result = parse_time("in 2 hours")
     assert result is not None
     assert result > datetime.now()
 
 
 def test_parse_time_invalid():
     """Невалидная дата - 32.13.2026"""
-    from bot.main import _parse_time
-    result = _parse_time("32.13.2026")
+    result = parse_time("32.13.2026")
     assert result is None
 
 
 def test_parse_time_dash_separator():
     """Формат dd-mm-yyyy - 11-04-2026"""
-    from bot.main import _parse_time
-    result = _parse_time("11-04-2026")
+    result = parse_time("11-04-2026")
     assert result == datetime(2026, 4, 11, 0, 0)
 
 
 def test_parse_time_dash_with_time():
-    from bot.main import _parse_time
-    result = _parse_time("25-12-2026 09:00")
+    result = parse_time("25-12-2026 09:00")
     assert result == datetime(2026, 12, 25, 9, 0)
 
 
 def test_parse_time_dash_ambiguous_day_gt_12():
-    from bot.main import _parse_time
-    result = _parse_time("25-04-2026")
+    result = parse_time("25-04-2026")
     assert result == datetime(2026, 4, 25, 0, 0)
