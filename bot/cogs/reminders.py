@@ -55,7 +55,7 @@ class RemindersCog(commands.Cog, name="Напоминания"):
                 "New reminder added by %s: %s at %s", ctx.author.id, message, reminder_time
             )
         except Exception as e:
-            logger.error("Error in remind command: %s", e)
+            logger.exception("Ошибка в команде remind")
             await ctx.send(f"Ошибка: {e}", ephemeral=True)
 
     @commands.hybrid_command()
