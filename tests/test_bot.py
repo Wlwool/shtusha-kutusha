@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from bot import database
 from bot.database import (
     add_reminder,
     delete_reminder,
@@ -19,16 +20,13 @@ async def test_reminder_workflow():
     test_time = datetime.now() + timedelta(hours=1)
     test_message = "Test reminder"
 
-    # Тест добавления напоминания
     reminder_id = await add_reminder(123, 456, test_time, test_message)
     assert isinstance(reminder_id, int)
 
-    # Тест получения напоминаний
     reminders = await get_pending_reminders()
     assert len(reminders) == 1
     assert reminders[0].message == test_message
 
-    # Тест удаления напоминания
     await delete_reminder(reminder_id)
     reminders = await get_pending_reminders()
     assert len(reminders) == 0
@@ -47,11 +45,9 @@ async def test_get_user_reminders_pagination():
     user_id = 999
     now = datetime.now()
 
-    # Создаёт 15 напоминаний
     for i in range(15):
         await add_reminder(user_id, 111, now + timedelta(hours=i + 1), f"Reminder {i}")
 
-    # Первая страница
     reminders, total = await get_user_reminders(user_id, limit=10, offset=0)
     assert total == 15
     assert len(reminders) == 10
@@ -148,6 +144,48 @@ async def test_get_reminder_maps_all_fields():
     assert reminder.message == "Mapping"
     assert isinstance(reminder.created_at, datetime)
     assert reminder.version == 1
+
+
+@pytest.mark.asyncio
+async def test_get_overdue_reminders_returns_only_past_in_order():
+    now = datetime.now()
+    await add_reminder(1, 10, now - timedelta(hours=1), "newer")
+    await add_reminder(1, 10, now - timedelta(hours=3), "older")
+    await add_reminder(1, 10, now + timedelta(hours=1), "future")
+
+    overdue = await database.get_overdue_reminders()
+
+    assert [r.message for r in overdue] == ["older", "newer"]
+
+
+@pytest.mark.asyncio
+async def test_init_db_adds_version_column_to_old_table(tmp_path, monkeypatch):
+    """Таблица старого формата (без version) обновляется, данные сохраняются."""
+    old_db = tmp_path / "old.db"
+    with sqlite3.connect(old_db) as conn:
+        conn.execute(
+            """CREATE TABLE reminders (id INTEGER PRIMARY KEY AUTOINCREMENT,
+               user_id INTEGER NOT NULL, channel_id INTEGER NOT NULL,
+               reminder_time TEXT NOT NULL, message TEXT NOT NULL,
+               created_at TEXT NOT NULL)"""
+        )
+        conn.execute(
+            "INSERT INTO reminders (user_id, channel_id, reminder_time, message, created_at)"
+            " VALUES (1, 2, '2030-01-01T10:00:00', 'старое', '2029-01-01T10:00:00')"
+        )
+    monkeypatch.setattr(database, "DB_NAME", old_db)
+
+    await database.init_db()
+
+    reminder = await get_reminder(1)
+    assert reminder.message == "старое"
+    assert reminder.version == 1
+
+
+@pytest.mark.asyncio
+async def test_init_db_is_idempotent():
+    await database.init_db()
+    await database.init_db()
 
 
 @pytest.mark.asyncio

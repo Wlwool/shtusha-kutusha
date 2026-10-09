@@ -1,11 +1,12 @@
 """Cog управления статусом и восстановлением напоминаний."""
+
 from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, List
 import discord
 from discord import Activity, ActivityType
 from discord.ext import commands, tasks
-from bot.database import get_pending_reminders
+from bot.database import get_overdue_reminders, get_pending_reminders
 from bot.ui.reminder_view import _scheduler_add
 
 if TYPE_CHECKING:
@@ -41,7 +42,7 @@ class StatusCog(commands.Cog, name="Статус"):
             )
             logger.info("Updated status to: %s", activities[self._status_cycle].name)
         except Exception as e:
-            logger.error("Status update error: %s", e)
+            logger.exception(f"Ошибка обновления статуса {e}")
 
 
     async def _get_live_stats(self) -> List[Activity]:
@@ -82,8 +83,22 @@ class StatusCog(commands.Cog, name="Статус"):
                 )
                 restored += 1
             logger.info("Успешно восстановлены %d напоминаний", restored)
-        except Exception as e:
-            logger.error("Ошибка восстановления напоминаний: %s", e)
+
+            overdue = await get_overdue_reminders()
+            if overdue:
+                logger.warning(
+                    "Найдено %d пропущенных напоминаний, отправляю сейчас", len(overdue)
+                )
+            for reminder in overdue:
+                await self.bot.send_reminder(
+                    reminder.user_id,
+                    reminder.channel_id,
+                    reminder.message,
+                    reminder.id,
+                    reminder.version,
+                )
+        except Exception:
+            logger.exception("Ошибка восстановления напоминаний")
 
 
 async def setup(bot: MyBot) -> None:
