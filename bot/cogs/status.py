@@ -42,7 +42,7 @@ class StatusCog(commands.Cog, name="Статус"):
             )
             logger.info("Updated status to: %s", activities[self._status_cycle].name)
         except Exception as e:
-            logger.exception(f"Ошибка обновления статуса {e}")
+            logger.exception("Ошибка обновления статуса: %s", e)
 
 
     async def _get_live_stats(self) -> List[Activity]:
