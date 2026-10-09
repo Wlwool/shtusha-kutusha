@@ -50,10 +50,11 @@ async def init_db():
                            message TEXT NOT NULL,
                            created_at TEXT NOT NULL,
                            version INTEGER NOT NULL DEFAULT 1)''')
-        try:
-            await db.execute('ALTER TABLE reminders ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
-        except Exception:
-            pass
+        cursor = await db.execute('PRAGMA table_info(reminders)')
+        columns = {row[1] for row in await cursor.fetchall()}
+        if 'version' not in columns:
+            await db.execute(
+                'ALTER TABLE reminders ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
         await db.commit()
 
 async def add_reminder(user_id: int, channel_id: int, reminder_time: datetime.datetime, message: str) -> int:
@@ -78,6 +79,18 @@ async def get_pending_reminders() -> list[Reminder]:
             '''SELECT id, user_id, channel_id, reminder_time, message, created_at, version
                FROM reminders
                WHERE reminder_time > ?''',
+            (datetime.datetime.now().isoformat(),))
+        return [Reminder.from_row(row) for row in await cursor.fetchall()]
+
+
+async def get_overdue_reminders() -> list[Reminder]:
+    """Напоминания, время которых уже наступило, но которые ещё не отправлены."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(
+            '''SELECT id, user_id, channel_id, reminder_time, message, created_at, version
+               FROM reminders
+               WHERE reminder_time <= ?
+               ORDER BY reminder_time ASC''',
             (datetime.datetime.now().isoformat(),))
         return [Reminder.from_row(row) for row in await cursor.fetchall()]
 

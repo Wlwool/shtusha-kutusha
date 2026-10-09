@@ -4,10 +4,10 @@ import discord
 from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
-from bot.database import init_db, delete_reminder, get_reminder
+from bot.database import init_db
+from bot.delivery import deliver_reminder
 from bot.help_cmd import register_help_command
 from bot.log_config import setup_logging
-from bot.utils import parse_time as _parse_time  # noqa: F401 для тестов
 
 discord.voice_client.VoiceClient.warn_nacl = False
 
@@ -43,38 +43,20 @@ class MyBot(commands.Bot):
     async def send_reminder(
             self, user_id: int, channel_id: int, message: str, reminder_id: int,
             version: int) -> None:
-        try:
-            reminder = await get_reminder(reminder_id)
-            if not reminder:
-                logger.info("Reminder %d already deleted, skipping", reminder_id)
-                return
-
-            if reminder.version != version:
-                logger.info("Reminder %d version mismatch (%d != %d), skipping stale job",
-                            reminder_id, version, reminder.version)
-                return
-
-            channel = self.get_channel(channel_id)
-            user = self.get_user(user_id)
-            if channel and user:
-                await channel.send(f'{user.mention}, Вы просили напомнить: {message}')
-                await delete_reminder(reminder_id)
-                logger.info("Sent reminder %d to user %d", reminder_id, user_id)
-            else:
-                logger.warning(
-                    "Не удается отправить напоминание %d - канал или юзер не найдены",
-                    reminder_id)
-        except Exception as e:
-            logger.error("Ошибка отправки напоминания %d: %s", reminder_id, e)
+        await deliver_reminder(
+            self, user_id, channel_id, message, reminder_id, version)
 
 
 bot = MyBot()
 
 
 if __name__ == '__main__':
+    token = os.getenv('DISCORD_TOKEN')
+    if not token:
+        raise SystemExit('DISCORD_TOKEN не задан: укажите его в файле .env')
     try:
         logger.info("Starting bot...")
-        bot.run(os.getenv('DISCORD_TOKEN'))
-    except Exception as e:
-        logger.critical("Failed to start bot: %s", e)
+        bot.run(token)
+    except Exception:
+        logger.critical("Failed to start bot", exc_info=True)
         raise

@@ -2,7 +2,7 @@ from __future__ import annotations
 import datetime
 import logging
 import discord
-from apscheduler.jobstores.base import ConflictingIdError, JobLookupError
+from apscheduler.jobstores.base import JobLookupError
 from bot.database import delete_reminder, get_reminder, get_user_reminders, update_reminder
 from bot.utils import parse_time
 
@@ -25,26 +25,15 @@ def _scheduler_remove(bot, reminder_id: int) -> None:
 
 def _scheduler_add(bot, reminder_id: int, run_date, args) -> None:
     """Добавить задачу, заменяя существующую с тем же ID."""
-    try:
-        bot.scheduler.add_job(
-            bot.send_reminder,
-            "date",
-            run_date=run_date,
-            args=args,
-            id=str(reminder_id),
-            replace_existing=True,
-        )
-        logger.info("Added scheduler job %s for %s", reminder_id, run_date)
-    except ConflictingIdError:
-        _scheduler_remove(bot, reminder_id)
-        bot.scheduler.add_job(
-            bot.send_reminder,
-            "date",
-            run_date=run_date,
-            args=args,
-            id=str(reminder_id),
-        )
-        logger.info("Re-added scheduler job %s for %s", reminder_id, run_date)
+    bot.scheduler.add_job(
+        bot.send_reminder,
+        "date",
+        run_date=run_date,
+        args=args,
+        id=str(reminder_id),
+        replace_existing=True,
+    )
+    logger.info("Added scheduler job %s for %s", reminder_id, run_date)
 
 
 class EditReminderModal(discord.ui.Modal, title="Редактировать напоминание"):
@@ -102,7 +91,6 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
                 new_version,
             )
 
-            _scheduler_remove(self.bot, self.reminder_id)
             _scheduler_add(self.bot, self.reminder_id, new_time, job_args)
 
             logger.info(
@@ -119,7 +107,7 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
             embed = self.view._build_embed()
             await interaction.response.edit_message(embed=embed, view=self.view)
         except Exception as e:
-            logger.error("Error editing reminder %s: %s", self.reminder_id, e)
+            logger.exception("Error editing reminder %s", self.reminder_id)
             await interaction.response.send_message(f"Ошибка: {e}", ephemeral=True)
 
 

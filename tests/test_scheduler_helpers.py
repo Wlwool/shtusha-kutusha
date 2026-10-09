@@ -1,6 +1,8 @@
 """Тесты вспомогательных функций планировщика из bot.ui.reminder_view."""
+
 from __future__ import annotations
 
+import asyncio
 import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -60,3 +62,23 @@ async def test_scheduler_remove_missing_job_does_not_raise(fake_bot):
     _scheduler_remove(fake_bot, 12345)
 
     assert fake_bot.scheduler.get_jobs() == []
+
+
+async def test_scheduler_add_replacement_moves_job_in_order(fake_bot):
+    _scheduler_add(fake_bot, 1, _in_hours(5), (1, 2, "a", 1, 1))
+    _scheduler_add(fake_bot, 2, _in_hours(3), (1, 2, "b", 2, 1))
+
+    # редактирование: первое напоминание переносится раньше второго
+    _scheduler_add(fake_bot, 1, _in_hours(1), (1, 2, "a", 1, 2))
+
+    assert [job.id for job in fake_bot.scheduler.get_jobs()] == ["1", "2"]
+
+
+async def test_scheduler_add_replaced_job_fires_at_new_time(fake_bot):
+    _scheduler_add(fake_bot, 1, _in_hours(1), (1, 2, "old", 1, 1))
+    soon = datetime.datetime.now() + datetime.timedelta(seconds=0.5)
+
+    _scheduler_add(fake_bot, 1, soon, (1, 2, "new", 1, 2))
+    await asyncio.sleep(1.5)
+
+    fake_bot.send_reminder.assert_awaited_once_with(1, 2, "new", 1, 2)
