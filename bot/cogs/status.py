@@ -1,7 +1,5 @@
 """Cog управления статусом и восстановлением напоминаний."""
-
 from __future__ import annotations
-import datetime
 import logging
 from typing import TYPE_CHECKING, List
 import discord
@@ -70,13 +68,17 @@ class StatusCog(commands.Cog, name="Статус"):
             logger.info("Восстановление %d напоминания из базы данных", len(reminders))
             restored = 0
             for reminder in reminders:
-                reminder_id, user_id, channel_id, reminder_time, message, _created, version = reminder
-                reminder_time = datetime.datetime.fromisoformat(reminder_time)
                 _scheduler_add(
                     self.bot,
-                    reminder_id,
-                    reminder_time,
-                    (user_id, channel_id, message, reminder_id, version),
+                    reminder.id,
+                    reminder.reminder_time,
+                    (
+                        reminder.user_id,
+                        reminder.channel_id,
+                        reminder.message,
+                        reminder.id,
+                        reminder.version,
+                    ),
                 )
                 restored += 1
             logger.info("Успешно восстановлены %d напоминаний", restored)

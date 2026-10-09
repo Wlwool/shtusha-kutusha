@@ -49,10 +49,9 @@ class MyBot(commands.Bot):
                 logger.info("Reminder %d already deleted, skipping", reminder_id)
                 return
 
-            _rid, _uid, _cid, _time, _msg, _created, db_version = reminder
-            if db_version != version:
+            if reminder.version != version:
                 logger.info("Reminder %d version mismatch (%d != %d), skipping stale job",
-                            reminder_id, version, db_version)
+                            reminder_id, version, reminder.version)
                 return
 
             channel = self.get_channel(channel_id)

@@ -139,7 +139,7 @@ class ReminderListView(discord.ui.View):
     def _build_buttons(self) -> None:
         """Создать кнопки удаления, редактирования и пагинации."""
         for r in self.reminders:
-            rid = r[0]
+            rid = r.id
             del_btn = discord.ui.Button(
                 label=f"🗑️ {rid}", style=discord.ButtonStyle.red, custom_id=f"del:{rid}"
             )
@@ -199,15 +199,13 @@ class ReminderListView(discord.ui.View):
                     "Напоминание не найдено", ephemeral=True
                 )
                 return
-            _rid, _uid, _cid, r_time, r_msg, _created, _version = reminder
-            dt = datetime.datetime.fromisoformat(r_time)
-            time_str = dt.strftime("%d-%m-%Y %H:%M")
+            time_str = reminder.reminder_time.strftime("%d-%m-%Y %H:%M")
 
             modal = EditReminderModal(
                 bot=self.bot,
                 reminder_id=reminder_id,
                 current_time=time_str,
-                current_message=r_msg,
+                current_message=reminder.message,
                 view=self,
             )
             await interaction.response.send_modal(modal)
@@ -251,12 +249,10 @@ class ReminderListView(discord.ui.View):
             return embed
 
         for r in self.reminders:
-            rid, reminder_time, message, _channel_id, _created_at = r
-            dt = datetime.datetime.fromisoformat(reminder_time)
-            time_str = dt.strftime("%d-%m-%Y %H:%M")
+            time_str = r.reminder_time.strftime("%d-%m-%Y %H:%M")
             embed.add_field(
-                name=f"`# ID: {rid}` — {time_str}",
-                value=message[:100] + ("..." if len(message) > 100 else ""),
+                name=f"`# ID: {r.id}` — {time_str}",
+                value=r.message[:100] + ("..." if len(r.message) > 100 else ""),
                 inline=False,
             )
         return embed
