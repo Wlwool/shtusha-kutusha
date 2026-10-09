@@ -1,11 +1,43 @@
-import os
-import aiosqlite
 import datetime
+import os
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple, Optional
+
+import aiosqlite
 
 DB_DIR = Path(os.getenv("DB_DIR", Path(__file__).parent))
 DB_NAME = DB_DIR / "bot.db"
+
+
+@dataclass(frozen=True, slots=True)
+class Reminder:
+    """Напоминание из базы данных."""
+
+    id: int
+    user_id: int
+    channel_id: int
+    reminder_time: datetime.datetime
+    message: str
+    created_at: datetime.datetime
+    version: int
+
+    @classmethod
+    def from_row(cls, row: tuple) -> "Reminder":
+        """Собрать напоминание из строки таблицы reminders.
+
+        Порядок столбцов в строке: id, user_id, channel_id, reminder_time,
+        message, created_at, version.
+        """
+        id_, user_id, channel_id, reminder_time, message, created_at, version = row
+        return cls(
+            id=id_,
+            user_id=user_id,
+            channel_id=channel_id,
+            reminder_time=datetime.datetime.fromisoformat(reminder_time),
+            message=message,
+            created_at=datetime.datetime.fromisoformat(created_at),
+            version=version,
+        )
 
 
 async def init_db():
@@ -40,15 +72,19 @@ async def delete_reminder(reminder_id: int):
         await db.execute('DELETE FROM reminders WHERE id = ?', (reminder_id,))
         await db.commit()
 
-async def get_pending_reminders() -> List[Tuple]:
+async def get_pending_reminders() -> list[Reminder]:
     async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute('''SELECT * FROM reminders
-                                  WHERE reminder_time > ?''',
-                                  (datetime.datetime.now().isoformat(),))
-        return await cursor.fetchall()
+        cursor = await db.execute(
+            '''SELECT id, user_id, channel_id, reminder_time, message, created_at, version
+               FROM reminders
+               WHERE reminder_time > ?''',
+            (datetime.datetime.now().isoformat(),))
+        return [Reminder.from_row(row) for row in await cursor.fetchall()]
 
 
-async def get_user_reminders(user_id: int, limit: int = 10, offset: int = 0) -> Tuple[List[Tuple], int]:
+async def get_user_reminders(
+    user_id: int, limit: int = 10, offset: int = 0
+) -> tuple[list[Reminder], int]:
     """Получает напоминания пользователя с пагинацией.
     Возвращает: записи, общее_количество
     """
@@ -61,20 +97,21 @@ async def get_user_reminders(user_id: int, limit: int = 10, offset: int = 0) -> 
 
         # Записи с пагинацией
         cursor = await db.execute(
-            '''SELECT id, reminder_time, message, channel_id, created_at
+            '''SELECT id, user_id, channel_id, reminder_time, message, created_at, version
                FROM reminders
                WHERE user_id = ? AND reminder_time > ?
                ORDER BY reminder_time ASC
                LIMIT ? OFFSET ?''',
             (user_id, datetime.datetime.now().isoformat(), limit, offset)
         )
-        return await cursor.fetchall(), total
+        return [Reminder.from_row(row) for row in await cursor.fetchall()], total
 
 
 async def update_reminder(
     reminder_id: int,
-    reminder_time: Optional[datetime.datetime] = None,
-    message: Optional[str] = None,) -> int | None:
+    reminder_time: datetime.datetime | None = None,
+    message: str | None = None,
+) -> int | None:
     """Обновить напоминание.
     Возвращает новый version или None если не найдено.
     """
@@ -104,8 +141,12 @@ async def update_reminder(
         return row[0] if row else None
 
 
-async def get_reminder(reminder_id: int) -> Tuple:
+async def get_reminder(reminder_id: int) -> Reminder | None:
     """Получить напоминание по ID"""
     async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute('SELECT * FROM reminders WHERE id = ?', (reminder_id,))
-        return await cursor.fetchone()
+        cursor = await db.execute(
+            '''SELECT id, user_id, channel_id, reminder_time, message, created_at, version
+               FROM reminders WHERE id = ?''',
+            (reminder_id,))
+        row = await cursor.fetchone()
+        return Reminder.from_row(row) if row else None

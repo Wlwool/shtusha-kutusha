@@ -26,7 +26,7 @@ async def test_reminder_workflow():
     # Тест получения напоминаний
     reminders = await get_pending_reminders()
     assert len(reminders) == 1
-    assert reminders[0][4] == test_message
+    assert reminders[0].message == test_message
 
     # Тест удаления напоминания
     await delete_reminder(reminder_id)
@@ -55,12 +55,14 @@ async def test_get_user_reminders_pagination():
     reminders, total = await get_user_reminders(user_id, limit=10, offset=0)
     assert total == 15
     assert len(reminders) == 10
-    assert reminders[0][2] == "Reminder 0"
+    assert reminders[0].message == "Reminder 0"
+    assert reminders[0].user_id == user_id
+    assert reminders[0].channel_id == 111
 
     # Вторая страница
     reminders, total = await get_user_reminders(user_id, limit=10, offset=10)
     assert len(reminders) == 5
-    assert reminders[0][2] == "Reminder 10"
+    assert reminders[0].message == "Reminder 10"
 
 
 @pytest.mark.asyncio
@@ -80,8 +82,8 @@ async def test_update_reminder_time():
     assert new_version == 2
 
     reminder = await get_reminder(reminder_id)
-    assert datetime.fromisoformat(reminder[3]) == new_time
-    assert reminder[4] == "Original message"
+    assert reminder.reminder_time == new_time
+    assert reminder.message == "Original message"
 
 
 @pytest.mark.asyncio
@@ -93,8 +95,8 @@ async def test_update_reminder_message():
     assert new_version == 2
 
     reminder = await get_reminder(reminder_id)
-    assert reminder[4] == "Updated message"
-    assert datetime.fromisoformat(reminder[3]) == test_time
+    assert reminder.message == "Updated message"
+    assert reminder.reminder_time == test_time
 
 
 @pytest.mark.asyncio
@@ -109,8 +111,8 @@ async def test_update_reminder_both():
     assert new_version == 2
 
     reminder = await get_reminder(reminder_id)
-    assert datetime.fromisoformat(reminder[3]) == new_time
-    assert reminder[4] == "New message"
+    assert reminder.reminder_time == new_time
+    assert reminder.message == "New message"
 
 
 @pytest.mark.asyncio
@@ -123,13 +125,29 @@ async def test_update_reminder_increments_version():
     assert await update_reminder(reminder_id, message="Second") == 3
 
     reminder = await get_reminder(reminder_id)
-    assert reminder[6] == 3
+    assert reminder.version == 3
 
 
 @pytest.mark.asyncio
 async def test_update_reminder_not_found():
     result = await update_reminder(99999, message="test")
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_reminder_maps_all_fields():
+    test_time = datetime.now() + timedelta(hours=1)
+    reminder_id = await add_reminder(123, 456, test_time, "Mapping")
+
+    reminder = await get_reminder(reminder_id)
+
+    assert reminder.id == reminder_id
+    assert reminder.user_id == 123
+    assert reminder.channel_id == 456
+    assert reminder.reminder_time == test_time
+    assert reminder.message == "Mapping"
+    assert isinstance(reminder.created_at, datetime)
+    assert reminder.version == 1
 
 
 @pytest.mark.asyncio
