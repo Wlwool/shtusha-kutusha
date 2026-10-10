@@ -28,8 +28,8 @@
 Слева список напоминаний с кнопками удаления и редактирования, справа справка по командам и форматам времени.
 
 <p align="center">
-  <img src="docs/screenshots/help.webp" alt="Справка /help_remind: команды и форматы времени" width="400">
-  <img src="docs/screenshots/list_reminder.webp" alt="Список напоминаний с кнопками удаления и редактирования" width="400">
+  <img src="docs/screenshots/help.png" alt="Справка /help_remind: команды и форматы времени" width="400">
+  <img src="docs/screenshots/list_reminder.png" alt="Список напоминаний с кнопками удаления и редактирования" width="400">
 </p>
 
 ## Команды
