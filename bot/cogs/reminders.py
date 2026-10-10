@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from discord import app_commands
 from discord.ext import commands
@@ -37,9 +37,9 @@ class RemindersCog(commands.Cog, name="Напоминания"):
     def __init__(self, bot: MyBot) -> None:
         self.bot = bot
 
-    @commands.hybrid_command()
+    @commands.hybrid_command()  # type: ignore[arg-type]
     async def remind(
-        self, ctx: commands.Context, time_str: str, *, message: str
+        self, ctx: commands.Context[Any], time_str: str, *, message: str
     ) -> None:
         """Установить напоминание.
         Примеры:
@@ -90,8 +90,8 @@ class RemindersCog(commands.Cog, name="Напоминания"):
             logger.exception("Ошибка в команде remind")
             await ctx.send(f"Ошибка: {e}", ephemeral=True)
 
-    @commands.hybrid_command()
-    async def list_reminders(self, ctx: commands.Context) -> None:
+    @commands.hybrid_command()  # type: ignore[arg-type]
+    async def list_reminders(self, ctx: commands.Context[Any]) -> None:
         """Просмотреть свои напоминания."""
         reminders, total = await get_user_reminders(
             ctx.author.id, REMINDERS_PER_PAGE, 0
@@ -103,11 +103,11 @@ class RemindersCog(commands.Cog, name="Напоминания"):
         embed = view._build_embed()
         await ctx.send(embed=embed, view=view, ephemeral=True)
 
-    @commands.hybrid_command()
+    @commands.hybrid_command()  # type: ignore[arg-type]
     @app_commands.describe(
         offset="Смещение от UTC, например +5 или -3 (от -12 до +14). Пусто: показать текущее"
     )
-    async def timezone(self, ctx: commands.Context, offset: str = "") -> None:
+    async def timezone(self, ctx: commands.Context[Any], offset: str = "") -> None:
         """Задает часовой пояс (смещение от UTC) или показ текущего"""
         text = offset.strip()
         if not text:

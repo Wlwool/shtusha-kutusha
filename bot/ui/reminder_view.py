@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import datetime
 import logging
+from collections.abc import Callable, Coroutine
+from typing import TYPE_CHECKING, Any
 
 import discord
 from apscheduler.jobstores.base import JobLookupError
 
 from bot.database import (
+    Reminder,
     delete_reminder,
     get_reminder,
     get_user_reminders,
@@ -15,12 +18,15 @@ from bot.database import (
 from bot.tz import DEFAULT_UTC_OFFSET, format_local, format_utc_offset
 from bot.utils import parse_time
 
+if TYPE_CHECKING:
+    from bot.main import MyBot
+
 logger = logging.getLogger(__name__)
 
 REMINDERS_PER_PAGE = 10
 
 
-def _scheduler_remove(bot, reminder_id: int) -> None:
+def _scheduler_remove(bot: MyBot, reminder_id: int) -> None:
     """Удалить задачу из scheduler, игнорируя 'не найдено'."""
     jobs = [job.id for job in bot.scheduler.get_jobs()]
     logger.info("Current scheduler jobs: %s", jobs)
@@ -32,7 +38,12 @@ def _scheduler_remove(bot, reminder_id: int) -> None:
         # logger.debug("Scheduler job %s already fired or removed", reminder_id)
 
 
-def _scheduler_add(bot, reminder_id: int, run_date, args) -> None:
+def _scheduler_add(
+    bot: MyBot,
+    reminder_id: int,
+    run_date: datetime.datetime,
+    args: tuple[int, int, str, int, int],
+) -> None:
     """Добавить задачу, заменяя существующую с тем же ID."""
     bot.scheduler.add_job(
         bot.send_reminder,
@@ -48,12 +59,12 @@ def _scheduler_add(bot, reminder_id: int, run_date, args) -> None:
 class EditReminderModal(discord.ui.Modal, title="Редактировать напоминание"):
     """Модальное окно для редактирования напоминания."""
 
-    time_input = discord.ui.TextInput(
+    time_input: discord.ui.TextInput[EditReminderModal] = discord.ui.TextInput(
         label="Время (например: 18:00 или in 2 hours)",
         style=discord.TextStyle.short,
         required=True,
     )
-    message_input = discord.ui.TextInput(
+    message_input: discord.ui.TextInput[EditReminderModal] = discord.ui.TextInput(
         label="Текст напоминания",
         style=discord.TextStyle.paragraph,
         required=True,
@@ -61,7 +72,7 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
 
     def __init__(
         self,
-        bot,
+        bot: MyBot,
         reminder_id: int,
         current_time: str,
         current_message: str,
@@ -94,6 +105,7 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
                 )
                 return
 
+            assert interaction.channel is not None  # команда вызвана из канала
             job_args = (
                 interaction.user.id,
                 interaction.channel.id,
@@ -127,9 +139,9 @@ class ReminderListView(discord.ui.View):
 
     def __init__(
         self,
-        bot,
+        bot: MyBot,
         user_id: int,
-        reminders: list,
+        reminders: list[Reminder],
         total: int,
         offset: int = 0,
         utc_offset: int = DEFAULT_UTC_OFFSET,
@@ -147,39 +159,41 @@ class ReminderListView(discord.ui.View):
         """Создать кнопки удаления, редактирования и пагинации."""
         for r in self.reminders:
             rid = r.id
-            del_btn = discord.ui.Button(
+            del_btn: discord.ui.Button[ReminderListView] = discord.ui.Button(
                 label=f"🗑️ {rid}", style=discord.ButtonStyle.red, custom_id=f"del:{rid}"
             )
-            del_btn.callback = self._make_delete_callback(rid)
+            del_btn.callback = self._make_delete_callback(rid)  # type: ignore[method-assign, assignment]
             self.add_item(del_btn)
 
-            edit_btn = discord.ui.Button(
+            edit_btn: discord.ui.Button[ReminderListView] = discord.ui.Button(
                 label=f"✏️ {rid}",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"edit:{rid}",
             )
-            edit_btn.callback = self._make_edit_callback(rid)
+            edit_btn.callback = self._make_edit_callback(rid)  # type: ignore[method-assign, assignment]
             self.add_item(edit_btn)
 
-        prev_btn = discord.ui.Button(
+        prev_btn: discord.ui.Button[ReminderListView] = discord.ui.Button(
             label="⬅️",
             style=discord.ButtonStyle.secondary,
             custom_id="prev",
             disabled=self.offset == 0,
         )
-        prev_btn.callback = self.prev_page
+        prev_btn.callback = self.prev_page  # type: ignore[method-assign]
         self.add_item(prev_btn)
 
-        next_btn = discord.ui.Button(
+        next_btn: discord.ui.Button[ReminderListView] = discord.ui.Button(
             label="➡️",
             style=discord.ButtonStyle.secondary,
             custom_id="next",
             disabled=self.offset + REMINDERS_PER_PAGE >= self.total,
         )
-        next_btn.callback = self.next_page
+        next_btn.callback = self.next_page  # type: ignore[method-assign]
         self.add_item(next_btn)
 
-    def _make_delete_callback(self, reminder_id: int):
+    def _make_delete_callback(
+        self, reminder_id: int
+    ) -> Callable[[discord.Interaction], Coroutine[Any, Any, None]]:
         async def callback(interaction: discord.Interaction) -> None:
 
             await delete_reminder(reminder_id)
@@ -198,7 +212,9 @@ class ReminderListView(discord.ui.View):
 
         return callback
 
-    def _make_edit_callback(self, reminder_id: int):
+    def _make_edit_callback(
+        self, reminder_id: int
+    ) -> Callable[[discord.Interaction], Coroutine[Any, Any, None]]:
         async def callback(interaction: discord.Interaction) -> None:
             reminder = await get_reminder(reminder_id)
             if not reminder:

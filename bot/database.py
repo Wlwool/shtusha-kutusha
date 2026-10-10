@@ -1,7 +1,9 @@
 import datetime
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
@@ -29,7 +31,7 @@ class Reminder:
     version: int
 
     @classmethod
-    def from_row(cls, row: tuple) -> "Reminder":
+    def from_row(cls, row: Sequence[Any]) -> "Reminder":
         """Собрать напоминание из строки таблицы reminders.
 
         Порядок столбцов в строке: id, user_id, channel_id, reminder_time,
@@ -71,7 +73,9 @@ def _legacy_to_utc_iso(text: str) -> str:
 async def _migrate(db: aiosqlite.Connection) -> None:
     """Приведение базы к текущей версии схемы. Вызывается внутри init_db."""
     cursor = await db.execute("PRAGMA user_version")
-    (version,) = await cursor.fetchone()
+    row = await cursor.fetchone()
+    assert row is not None  # PRAGMA user_version всегда возвращает строку
+    (version,) = row
     if version < 1:
         cursor = await db.execute("SELECT id, reminder_time, created_at FROM reminders")
         for id_, reminder_time, created_at in await cursor.fetchall():
@@ -86,7 +90,7 @@ async def _migrate(db: aiosqlite.Connection) -> None:
         await db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
-async def init_db():
+async def init_db() -> None:
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""CREATE TABLE IF NOT EXISTS reminders
                           (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,10 +151,12 @@ async def add_reminder(
             (user_id, channel_id, time_iso, message, _now_iso()),
         )
         await db.commit()
-        return cursor.lastrowid
+        reminder_id = cursor.lastrowid
+        assert reminder_id is not None  # после INSERT id всегда известен
+        return reminder_id
 
 
-async def delete_reminder(reminder_id: int):
+async def delete_reminder(reminder_id: int) -> None:
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
         await db.commit()
@@ -192,7 +198,9 @@ async def get_user_reminders(
             "SELECT COUNT(*) FROM reminders WHERE user_id = ? AND reminder_time > ?",
             (user_id, _now_iso()),
         )
-        total = (await cursor.fetchone())[0]
+        row = await cursor.fetchone()
+        assert row is not None  # COUNT(*) всегда возвращает строку
+        total = row[0]
 
         # Записи с пагинацией
         cursor = await db.execute(

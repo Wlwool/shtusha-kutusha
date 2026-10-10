@@ -3,6 +3,8 @@ from __future__ import annotations
 import datetime
 import os
 import re
+from collections.abc import Callable
+from typing import Any
 
 from dateparser import parse
 from discord.ext import commands
@@ -50,19 +52,21 @@ def parse_time(
 
     # Относительное время считается от часов пользователя, а не сервера.
     now_local = datetime.datetime.now(tz).replace(tzinfo=None)
-    parsed = parse(time_str, settings={"RELATIVE_BASE": now_local})
+    parsed: datetime.datetime | None = parse(
+        time_str, settings={"RELATIVE_BASE": now_local}
+    )
     if parsed is None:
         return None
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=tz)
 
 
-def is_admin() -> commands.CheckPredicate:
+def is_admin() -> Callable[[Any], Any]:
     """Проверка прав администратора через ADMIN_ID из окружения."""
     admin_id = os.getenv("ADMIN_ID")
     if not admin_id:
         raise commands.CheckFailure("ADMIN_ID не установлен в .env")
 
-    async def predicate(ctx: commands.Context) -> bool:
+    async def predicate(ctx: commands.Context[Any]) -> bool:
         return ctx.author.id == int(admin_id)
 
     return commands.check(predicate)

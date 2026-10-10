@@ -19,7 +19,7 @@ load_dotenv()
 
 
 class MyBot(commands.Bot):
-    def __init__(self):
+    def __init__(self) -> None:
         intents = discord.Intents.all()
         intents.message_content = True
         super().__init__(

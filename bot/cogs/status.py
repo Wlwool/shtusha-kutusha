@@ -29,6 +29,7 @@ class StatusCog(commands.Cog, name="Статус"):
     async def on_ready(self) -> None:
         """Срабатывает при запуске бота."""
         logger.info("%s успешно запущен!", self.bot.user)
+        assert self.bot.user is not None  # к моменту on_ready пользователь известен
         logger.info("Logged in as %s (ID: %s)", self.bot.user, self.bot.user.id)
         await self._restore_reminders()
         if not self._update_status.is_running():
@@ -57,7 +58,7 @@ class StatusCog(commands.Cog, name="Статус"):
             ),
             Activity(
                 type=ActivityType.watching,
-                name=f"на онлайн: {sum(g.member_count for g in self.bot.guilds)}",
+                name=f"на онлайн: {sum(g.member_count or 0 for g in self.bot.guilds)}",
             ),
             Activity(
                 type=ActivityType.playing,

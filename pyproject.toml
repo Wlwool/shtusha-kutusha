@@ -33,3 +33,8 @@ select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
 [tool.mypy]
 strict = true
 files = ["bot"]
+
+
+[[tool.mypy.overrides]]
+module = ["apscheduler.*", "dateparser"]
+ignore_missing_imports = true

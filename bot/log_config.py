@@ -6,7 +6,7 @@ LOG_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(LOG_DIR, "bot.log")
 
 
-def setup_logging():
+def setup_logging() -> None:
     handler = TimedRotatingFileHandler(
         LOG_FILE, when="midnight", backupCount=7, encoding="utf-8"
     )

@@ -2,12 +2,12 @@ import discord
 from discord.ext import commands
 
 
-def register_help_command(bot: commands.Bot):
+def register_help_command(bot: commands.Bot) -> None:
     @bot.tree.command(
         name="help_remind",
         description="Список доступных команд и примеры использования",
     )
-    async def help_remind(interaction: discord.Interaction):
+    async def help_remind(interaction: discord.Interaction) -> None:
         embed = discord.Embed(title="Доступные команды", color=discord.Color.blue())
 
         embed.add_field(

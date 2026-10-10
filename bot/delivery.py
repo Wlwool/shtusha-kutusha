@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+from typing import cast
 
 import discord
 
@@ -118,7 +119,8 @@ async def deliver_reminder(
             await _drop_undeliverable(reminder_id, user_id, channel_id, message)
             return
 
-        await channel.send(text)
+        # channel_id взят из канала, где была вызвана команда: писать в него можно.
+        await cast("discord.abc.Messageable", channel).send(text)
         await delete_reminder(reminder_id)
         logger.info("Отправлено напоминание %d пользователю %d", reminder_id, user_id)
     except Exception:
