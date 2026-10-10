@@ -1,9 +1,17 @@
 from __future__ import annotations
+
 import datetime
 import logging
+
 import discord
 from apscheduler.jobstores.base import JobLookupError
-from bot.database import delete_reminder, get_reminder, get_user_reminders, update_reminder
+
+from bot.database import (
+    delete_reminder,
+    get_reminder,
+    get_user_reminders,
+    update_reminder,
+)
 from bot.tz import DEFAULT_UTC_OFFSET, format_local, format_utc_offset
 from bot.utils import parse_time
 
@@ -39,6 +47,7 @@ def _scheduler_add(bot, reminder_id: int, run_date, args) -> None:
 
 class EditReminderModal(discord.ui.Modal, title="Редактировать напоминание"):
     """Модальное окно для редактирования напоминания."""
+
     time_input = discord.ui.TextInput(
         label="Время (например: 18:00 или in 2 hours)",
         style=discord.TextStyle.short,
@@ -80,8 +89,9 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
                 message=self.message_input.value,
             )
             if new_version is None:
-                await interaction.response.send_message("Напоминание не найдено",
-                                                        ephemeral=True)
+                await interaction.response.send_message(
+                    "Напоминание не найдено", ephemeral=True
+                )
                 return
 
             job_args = (
@@ -114,6 +124,7 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
 
 class ReminderListView(discord.ui.View):
     """Пагинация списка напоминаний с кнопками удаления и редактирования."""
+
     def __init__(
         self,
         bot,
@@ -237,7 +248,9 @@ class ReminderListView(discord.ui.View):
     def _build_embed(self) -> discord.Embed:
         embed = discord.Embed(title="Ваши напоминания", color=discord.Color.blue())
         page_num = (self.offset // REMINDERS_PER_PAGE) + 1
-        total_pages = max(1, (self.total + REMINDERS_PER_PAGE - 1) // REMINDERS_PER_PAGE)
+        total_pages = max(
+            1, (self.total + REMINDERS_PER_PAGE - 1) // REMINDERS_PER_PAGE
+        )
         embed.set_footer(
             text=(
                 f"Страница {page_num}/{total_pages} • Всего: {self.total} • "

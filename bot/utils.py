@@ -3,16 +3,17 @@ from __future__ import annotations
 import datetime
 import os
 import re
-from typing import Optional
+
 from dateparser import parse
 from discord.ext import commands
 
 from bot.tz import DEFAULT_UTC_OFFSET, offset_to_tz
 
+
 # парсинг времени и проверка прав администратора
 def parse_time(
     time_str: str, utc_offset: int = DEFAULT_UTC_OFFSET
-) -> Optional[datetime.datetime]:
+) -> datetime.datetime | None:
     """Парсит время из строки по часам пользователя.
     Поддерживаемые форматы:
         - dd.mm.yyyy HH:MM / dd/mm/yyyy HH:MM / dd-mm-yyyy HH:MM

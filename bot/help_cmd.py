@@ -3,7 +3,10 @@ from discord.ext import commands
 
 
 def register_help_command(bot: commands.Bot):
-    @bot.tree.command(name="help_remind", description="Список доступных команд и примеры использования")
+    @bot.tree.command(
+        name="help_remind",
+        description="Список доступных команд и примеры использования",
+    )
     async def help_remind(interaction: discord.Interaction):
         embed = discord.Embed(title="Доступные команды", color=discord.Color.blue())
 
@@ -17,13 +20,13 @@ def register_help_command(bot: commands.Bot):
                 "`/remind 18:30 Встреча с дружочками-пирожочками`\n"
                 "`/remind tomorrow at 9am Погладить кота`"
             ),
-            inline=False
+            inline=False,
         )
 
         embed.add_field(
             name="/list_reminders",
             value="Показать список активных напоминаний.\nКнопки удаления и редактирования доступны в самом сообщении.",
-            inline=False
+            inline=False,
         )
 
         embed.add_field(
@@ -33,13 +36,13 @@ def register_help_command(bot: commands.Bot):
                 "Примеры: `/timezone +5`, `/timezone -3`.\n"
                 "Без параметра покажет текущий. По умолчанию UTC+3 (Москва)."
             ),
-            inline=False
+            inline=False,
         )
 
         embed.add_field(
             name="/help_remind",
             value="Инструкция, как пользоваться ботом",
-            inline=False
+            inline=False,
         )
 
         embed.add_field(
@@ -49,7 +52,7 @@ def register_help_command(bot: commands.Bot):
                 "Абсолютное: `18:30`, `15.03.2025 09:00`, `15/03/2025 09:00`, `15-03-2025 09:00`\n"
                 "Время указывается по вашему часовому поясу (изменить: `/timezone`)"
             ),
-            inline=False
+            inline=False,
         )
 
         embed.set_footer(text="Напоминания работают в рамках данного сервера")
