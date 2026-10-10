@@ -27,7 +27,8 @@ class StatusCog(commands.Cog, name="Статус"):
         logger.info("%s успешно запущен!", self.bot.user)
         logger.info("Logged in as %s (ID: %s)", self.bot.user, self.bot.user.id)
         await self._restore_reminders()
-        self._update_status.start()
+        if not self._update_status.is_running():
+            self._update_status.start()
 
 
     @tasks.loop(minutes=15)
