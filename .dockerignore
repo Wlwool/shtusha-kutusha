@@ -2,8 +2,13 @@
 __pycache__/
 *.pyc
 .git/
+.github/
 .idea/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tests/
+README.md
 bot.log
 *.log
 .env
