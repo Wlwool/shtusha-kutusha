@@ -7,7 +7,8 @@ import logging
 
 import discord
 
-from bot.database import delete_reminder, get_reminder
+from bot.database import delete_reminder, get_reminder, get_utc_offset
+from bot.tz import format_local, format_utc_offset
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +21,18 @@ def _is_late(scheduled: datetime.datetime, now: datetime.datetime) -> bool:
 
 
 def _build_text(
-    mention: str, message: str, scheduled: datetime.datetime, late: bool
+    mention: str,
+    message: str,
+    scheduled: datetime.datetime,
+    late: bool,
+    utc_offset: int,
 ) -> str:
     text = f"{mention}, Вы просили напомнить: {message}"
     if late:
         text += (
             f"\n(Напоминание опоздало: оно было назначено на "
-            f"{scheduled:%d-%m-%Y %H:%M}, но бот в это время был недоступен.)"
+            f"{format_local(scheduled, utc_offset)} ({format_utc_offset(utc_offset)}), "
+            f"но бот в это время был недоступен.)"
         )
     return text
 
@@ -83,8 +89,11 @@ async def deliver_reminder(
             await _drop_undeliverable(reminder_id, user_id, channel_id, message)
             return
 
-        late = _is_late(reminder.reminder_time, datetime.datetime.now())
-        text = _build_text(user.mention, message, reminder.reminder_time, late)
+        late = _is_late(reminder.reminder_time, datetime.datetime.now(datetime.UTC))
+        utc_offset = await get_utc_offset(user_id)
+        text = _build_text(
+            user.mention, message, reminder.reminder_time, late, utc_offset
+        )
 
         if late:
             try:

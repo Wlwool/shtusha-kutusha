@@ -76,9 +76,18 @@ async def test_scheduler_add_replacement_moves_job_in_order(fake_bot):
 
 async def test_scheduler_add_replaced_job_fires_at_new_time(fake_bot):
     _scheduler_add(fake_bot, 1, _in_hours(1), (1, 2, "old", 1, 1))
-    soon = datetime.datetime.now() + datetime.timedelta(seconds=0.5)
+    soon = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=0.5)
 
     _scheduler_add(fake_bot, 1, soon, (1, 2, "new", 1, 2))
     await asyncio.sleep(1.5)
 
     fake_bot.send_reminder.assert_awaited_once_with(1, 2, "new", 1, 2)
+
+
+async def test_scheduler_add_accepts_aware_utc_time(fake_bot):
+    run_date = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)
+
+    _scheduler_add(fake_bot, 5, run_date, (1, 2, "msg", 5, 1))
+
+    job = fake_bot.scheduler.get_job("5")
+    assert job.next_run_time == run_date
