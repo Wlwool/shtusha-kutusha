@@ -2,7 +2,7 @@ import logging
 import os
 from logging.handlers import TimedRotatingFileHandler
 
-LOG_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR = os.getenv("LOG_DIR", os.path.dirname(os.path.abspath(__file__)))
 LOG_FILE = os.path.join(LOG_DIR, "bot.log")
 
 
