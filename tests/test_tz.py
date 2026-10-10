@@ -1,4 +1,5 @@
 """Тесты вспомогательных функций часовых поясов (bot.tz)"""
+
 import datetime
 
 import pytest
@@ -25,7 +26,21 @@ def test_parse_utc_offset_valid(text, expected):
 
 @pytest.mark.parametrize(
     "text",
-    ["", " ", "abc", "+15", "-13", "100", "5.5", "5,5", "UTC+5", "+", "--5", "٥", "5 5"],
+    [
+        "",
+        " ",
+        "abc",
+        "+15",
+        "-13",
+        "100",
+        "5.5",
+        "5,5",
+        "UTC+5",
+        "+",
+        "--5",
+        "٥",
+        "5 5",
+    ],
 )
 def test_parse_utc_offset_invalid(text):
     assert tz.parse_utc_offset(text) is None

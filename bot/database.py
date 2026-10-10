@@ -1,7 +1,9 @@
 import datetime
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
@@ -19,6 +21,7 @@ LEGACY_UTC_OFFSET = 3
 @dataclass(frozen=True, slots=True)
 class Reminder:
     """Напоминание из базы данных. Время хранится и отдаётся в UTC."""
+
     id: int
     user_id: int
     channel_id: int
@@ -28,7 +31,7 @@ class Reminder:
     version: int
 
     @classmethod
-    def from_row(cls, row: tuple) -> "Reminder":
+    def from_row(cls, row: Sequence[Any]) -> "Reminder":
         """Собрать напоминание из строки таблицы reminders.
 
         Порядок столбцов в строке: id, user_id, channel_id, reminder_time,
@@ -69,35 +72,43 @@ def _legacy_to_utc_iso(text: str) -> str:
 
 async def _migrate(db: aiosqlite.Connection) -> None:
     """Приведение базы к текущей версии схемы. Вызывается внутри init_db."""
-    cursor = await db.execute('PRAGMA user_version')
-    (version,) = await cursor.fetchone()
+    cursor = await db.execute("PRAGMA user_version")
+    row = await cursor.fetchone()
+    assert row is not None  # PRAGMA user_version всегда возвращает строку
+    (version,) = row
     if version < 1:
-        cursor = await db.execute('SELECT id, reminder_time, created_at FROM reminders')
+        cursor = await db.execute("SELECT id, reminder_time, created_at FROM reminders")
         for id_, reminder_time, created_at in await cursor.fetchall():
             await db.execute(
-                'UPDATE reminders SET reminder_time = ?, created_at = ? WHERE id = ?',
-                (_legacy_to_utc_iso(reminder_time), _legacy_to_utc_iso(created_at), id_))
-        await db.execute(f'PRAGMA user_version = {SCHEMA_VERSION}')
+                "UPDATE reminders SET reminder_time = ?, created_at = ? WHERE id = ?",
+                (
+                    _legacy_to_utc_iso(reminder_time),
+                    _legacy_to_utc_iso(created_at),
+                    id_,
+                ),
+            )
+        await db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
-async def init_db():
+async def init_db() -> None:
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute('''CREATE TABLE IF NOT EXISTS reminders
+        await db.execute("""CREATE TABLE IF NOT EXISTS reminders
                           (id INTEGER PRIMARY KEY AUTOINCREMENT,
                            user_id INTEGER NOT NULL,
                            channel_id INTEGER NOT NULL,
                            reminder_time TEXT NOT NULL,
                            message TEXT NOT NULL,
                            created_at TEXT NOT NULL,
-                           version INTEGER NOT NULL DEFAULT 1)''')
-        await db.execute('''CREATE TABLE IF NOT EXISTS user_settings
+                           version INTEGER NOT NULL DEFAULT 1)""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS user_settings
                           (user_id INTEGER PRIMARY KEY,
-                           utc_offset INTEGER NOT NULL)''')
-        cursor = await db.execute('PRAGMA table_info(reminders)')
+                           utc_offset INTEGER NOT NULL)""")
+        cursor = await db.execute("PRAGMA table_info(reminders)")
         columns = {row[1] for row in await cursor.fetchall()}
-        if 'version' not in columns:
+        if "version" not in columns:
             await db.execute(
-                'ALTER TABLE reminders ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
+                "ALTER TABLE reminders ADD COLUMN version INTEGER NOT NULL DEFAULT 1"
+            )
         await _migrate(db)
         await db.commit()
 
@@ -106,7 +117,8 @@ async def get_saved_utc_offset(user_id: int) -> int | None:
     """Смещение от UTC, выбранное пользователем, или None, если он его не выбирал."""
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(
-            'SELECT utc_offset FROM user_settings WHERE user_id = ?', (user_id,))
+            "SELECT utc_offset FROM user_settings WHERE user_id = ?", (user_id,)
+        )
         row = await cursor.fetchone()
         return row[0] if row else None
 
@@ -120,9 +132,10 @@ async def get_utc_offset(user_id: int) -> int:
 async def set_utc_offset(user_id: int, hours: int) -> None:
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
-            '''INSERT INTO user_settings (user_id, utc_offset) VALUES (?, ?)
-               ON CONFLICT(user_id) DO UPDATE SET utc_offset = excluded.utc_offset''',
-            (user_id, hours))
+            """INSERT INTO user_settings (user_id, utc_offset) VALUES (?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET utc_offset = excluded.utc_offset""",
+            (user_id, hours),
+        )
         await db.commit()
 
 
@@ -131,26 +144,32 @@ async def add_reminder(
 ) -> int:
     time_iso = _to_utc_iso(reminder_time)
     async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute('''INSERT INTO reminders 
+        cursor = await db.execute(
+            """INSERT INTO reminders 
                                   (user_id, channel_id, reminder_time, message, created_at)
-                                  VALUES (?, ?, ?, ?, ?)''',
-                                  (user_id, channel_id, time_iso, message, _now_iso()))
+                                  VALUES (?, ?, ?, ?, ?)""",
+            (user_id, channel_id, time_iso, message, _now_iso()),
+        )
         await db.commit()
-        return cursor.lastrowid
+        reminder_id = cursor.lastrowid
+        assert reminder_id is not None  # после INSERT id всегда известен
+        return reminder_id
 
 
-async def delete_reminder(reminder_id: int):
+async def delete_reminder(reminder_id: int) -> None:
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute('DELETE FROM reminders WHERE id = ?', (reminder_id,))
+        await db.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
         await db.commit()
+
 
 async def get_pending_reminders() -> list[Reminder]:
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(
-            '''SELECT id, user_id, channel_id, reminder_time, message, created_at, version
+            """SELECT id, user_id, channel_id, reminder_time, message, created_at, version
                FROM reminders
-               WHERE reminder_time > ?''',
-            (_now_iso(),))
+               WHERE reminder_time > ?""",
+            (_now_iso(),),
+        )
         return [Reminder.from_row(row) for row in await cursor.fetchall()]
 
 
@@ -158,11 +177,12 @@ async def get_overdue_reminders() -> list[Reminder]:
     """Напоминания, время которых уже наступило, но которые ещё не отправлены."""
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(
-            '''SELECT id, user_id, channel_id, reminder_time, message, created_at, version
+            """SELECT id, user_id, channel_id, reminder_time, message, created_at, version
                FROM reminders
                WHERE reminder_time <= ?
-               ORDER BY reminder_time ASC''',
-            (_now_iso(),))
+               ORDER BY reminder_time ASC""",
+            (_now_iso(),),
+        )
         return [Reminder.from_row(row) for row in await cursor.fetchall()]
 
 
@@ -175,18 +195,21 @@ async def get_user_reminders(
     async with aiosqlite.connect(DB_NAME) as db:
         # Общее количество
         cursor = await db.execute(
-            'SELECT COUNT(*) FROM reminders WHERE user_id = ? AND reminder_time > ?',
-            (user_id, _now_iso()))
-        total = (await cursor.fetchone())[0]
+            "SELECT COUNT(*) FROM reminders WHERE user_id = ? AND reminder_time > ?",
+            (user_id, _now_iso()),
+        )
+        row = await cursor.fetchone()
+        assert row is not None  # COUNT(*) всегда возвращает строку
+        total = row[0]
 
         # Записи с пагинацией
         cursor = await db.execute(
-            '''SELECT id, user_id, channel_id, reminder_time, message, created_at, version
+            """SELECT id, user_id, channel_id, reminder_time, message, created_at, version
                FROM reminders
                WHERE user_id = ? AND reminder_time > ?
                ORDER BY reminder_time ASC
-               LIMIT ? OFFSET ?''',
-            (user_id, _now_iso(), limit, offset)
+               LIMIT ? OFFSET ?""",
+            (user_id, _now_iso(), limit, offset),
         )
         return [Reminder.from_row(row) for row in await cursor.fetchall()], total
 
@@ -203,25 +226,27 @@ async def update_reminder(
     async with aiosqlite.connect(DB_NAME) as db:
         if time_iso is not None and message is not None:
             await db.execute(
-                'UPDATE reminders SET reminder_time = ?, message = ?, version = version + 1 WHERE id = ?',
-                (time_iso, message, reminder_id)
+                "UPDATE reminders SET reminder_time = ?, message = ?, version = version + 1 WHERE id = ?",
+                (time_iso, message, reminder_id),
             )
         elif time_iso is not None:
             await db.execute(
-                'UPDATE reminders SET reminder_time = ?, version = version + 1 WHERE id = ?',
-                (time_iso, reminder_id)
+                "UPDATE reminders SET reminder_time = ?, version = version + 1 WHERE id = ?",
+                (time_iso, reminder_id),
             )
         elif message is not None:
             await db.execute(
-                'UPDATE reminders SET message = ?, version = version + 1 WHERE id = ?',
-                (message, reminder_id)
+                "UPDATE reminders SET message = ?, version = version + 1 WHERE id = ?",
+                (message, reminder_id),
             )
         else:
             return None
         await db.commit()
         if db.total_changes == 0:
             return None
-        cursor = await db.execute('SELECT version FROM reminders WHERE id = ?', (reminder_id,))
+        cursor = await db.execute(
+            "SELECT version FROM reminders WHERE id = ?", (reminder_id,)
+        )
         row = await cursor.fetchone()
         return row[0] if row else None
 
@@ -230,8 +255,9 @@ async def get_reminder(reminder_id: int) -> Reminder | None:
     """Получить напоминание по ID"""
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(
-            '''SELECT id, user_id, channel_id, reminder_time, message, created_at, version
-               FROM reminders WHERE id = ?''',
-            (reminder_id,))
+            """SELECT id, user_id, channel_id, reminder_time, message, created_at, version
+               FROM reminders WHERE id = ?""",
+            (reminder_id,),
+        )
         row = await cursor.fetchone()
         return Reminder.from_row(row) if row else None

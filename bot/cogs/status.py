@@ -1,11 +1,14 @@
 """Cog управления статусом и восстановлением напоминаний."""
 
 from __future__ import annotations
+
 import logging
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
+
 import discord
 from discord import Activity, ActivityType
 from discord.ext import commands, tasks
+
 from bot.database import get_overdue_reminders, get_pending_reminders
 from bot.ui.reminder_view import _scheduler_add
 
@@ -17,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 class StatusCog(commands.Cog, name="Статус"):
     """Управление статусом бота и восстановление напоминаний."""
+
     def __init__(self, bot: MyBot) -> None:
         self.bot = bot
         self._status_cycle = 0
@@ -25,11 +29,11 @@ class StatusCog(commands.Cog, name="Статус"):
     async def on_ready(self) -> None:
         """Срабатывает при запуске бота."""
         logger.info("%s успешно запущен!", self.bot.user)
+        assert self.bot.user is not None  # к моменту on_ready пользователь известен
         logger.info("Logged in as %s (ID: %s)", self.bot.user, self.bot.user.id)
         await self._restore_reminders()
         if not self._update_status.is_running():
             self._update_status.start()
-
 
     @tasks.loop(minutes=15)
     async def _update_status(self) -> None:
@@ -45,8 +49,7 @@ class StatusCog(commands.Cog, name="Статус"):
         except Exception as e:
             logger.exception("Ошибка обновления статуса: %s", e)
 
-
-    async def _get_live_stats(self) -> List[Activity]:
+    async def _get_live_stats(self) -> list[Activity]:
         """Генерирует статусы с живой статистикой."""
         return [
             Activity(
@@ -55,7 +58,7 @@ class StatusCog(commands.Cog, name="Статус"):
             ),
             Activity(
                 type=ActivityType.watching,
-                name=f"на онлайн: {sum(g.member_count for g in self.bot.guilds)}",
+                name=f"на онлайн: {sum(g.member_count or 0 for g in self.bot.guilds)}",
             ),
             Activity(
                 type=ActivityType.playing,

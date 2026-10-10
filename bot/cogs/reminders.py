@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 import datetime
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
 from discord import app_commands
 from discord.ext import commands
+
 from bot.database import (
     add_reminder,
     get_saved_utc_offset,
@@ -30,11 +33,14 @@ logger = logging.getLogger(__name__)
 
 class RemindersCog(commands.Cog, name="Напоминания"):
     """Команды для создания и просмотра напоминаний."""
+
     def __init__(self, bot: MyBot) -> None:
         self.bot = bot
 
-    @commands.hybrid_command()
-    async def remind(self, ctx: commands.Context, time_str: str, *, message: str) -> None:
+    @commands.hybrid_command()  # type: ignore[arg-type]
+    async def remind(
+        self, ctx: commands.Context[Any], time_str: str, *, message: str
+    ) -> None:
         """Установить напоминание.
         Примеры:
             /remind in 1 hour Приготовить пюрешку
@@ -53,7 +59,9 @@ class RemindersCog(commands.Cog, name="Напоминания"):
                     "Пожалуйста, укажите корректное время в будущем (Например: 18:25)",
                     ephemeral=True,
                 )
-                logger.warning("Invalid time format from user %s: %s", ctx.author.id, time_str)
+                logger.warning(
+                    "Invalid time format from user %s: %s", ctx.author.id, time_str
+                )
                 return
 
             reminder_id = await add_reminder(
@@ -70,21 +78,24 @@ class RemindersCog(commands.Cog, name="Напоминания"):
                 f"({format_utc_offset(utc_offset)})"
             )
             if saved_offset is None:
-                text += (
-                    "\nЕсли у вас другой часовой пояс, укажите его: /timezone +5"
-                )
+                text += "\nЕсли у вас другой часовой пояс, укажите его: /timezone +5"
             await ctx.send(text)
             logger.info(
-                "New reminder added by %s: %s at %s", ctx.author.id, message, reminder_time
+                "New reminder added by %s: %s at %s",
+                ctx.author.id,
+                message,
+                reminder_time,
             )
         except Exception as e:
             logger.exception("Ошибка в команде remind")
             await ctx.send(f"Ошибка: {e}", ephemeral=True)
 
-    @commands.hybrid_command()
-    async def list_reminders(self, ctx: commands.Context) -> None:
+    @commands.hybrid_command()  # type: ignore[arg-type]
+    async def list_reminders(self, ctx: commands.Context[Any]) -> None:
         """Просмотреть свои напоминания."""
-        reminders, total = await get_user_reminders(ctx.author.id, REMINDERS_PER_PAGE, 0)
+        reminders, total = await get_user_reminders(
+            ctx.author.id, REMINDERS_PER_PAGE, 0
+        )
         utc_offset = await get_utc_offset(ctx.author.id)
         view = ReminderListView(
             self.bot, ctx.author.id, reminders, total, 0, utc_offset=utc_offset
@@ -92,11 +103,11 @@ class RemindersCog(commands.Cog, name="Напоминания"):
         embed = view._build_embed()
         await ctx.send(embed=embed, view=view, ephemeral=True)
 
-    @commands.hybrid_command()
+    @commands.hybrid_command()  # type: ignore[arg-type]
     @app_commands.describe(
         offset="Смещение от UTC, например +5 или -3 (от -12 до +14). Пусто: показать текущее"
     )
-    async def timezone(self, ctx: commands.Context, offset: str = "") -> None:
+    async def timezone(self, ctx: commands.Context[Any], offset: str = "") -> None:
         """Задает часовой пояс (смещение от UTC) или показ текущего"""
         text = offset.strip()
         if not text:
@@ -120,7 +131,9 @@ class RemindersCog(commands.Cog, name="Напоминания"):
             return
 
         await set_utc_offset(ctx.author.id, hours)
-        logger.info("User %s set timezone to %s", ctx.author.id, format_utc_offset(hours))
+        logger.info(
+            "User %s set timezone to %s", ctx.author.id, format_utc_offset(hours)
+        )
         await ctx.send(
             f"Часовой пояс установлен: {format_utc_offset(hours)}. Время в ваших "
             "напоминаниях теперь указывается по нему. Уже созданные напоминания "
