@@ -4,6 +4,7 @@ import logging
 import discord
 from apscheduler.jobstores.base import JobLookupError
 from bot.database import delete_reminder, get_reminder, get_user_reminders, update_reminder
+from bot.tz import DEFAULT_UTC_OFFSET, format_local, format_utc_offset
 from bot.utils import parse_time
 
 logger = logging.getLogger(__name__)
@@ -66,8 +67,8 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         try:
-            new_time = parse_time(self.time_input.value)
-            if not new_time or new_time < datetime.datetime.now():
+            new_time = parse_time(self.time_input.value, self.view.utc_offset)
+            if not new_time or new_time < datetime.datetime.now(datetime.UTC):
                 await interaction.response.send_message(
                     "Укажите корректное время в будущем", ephemeral=True
                 )
@@ -114,7 +115,13 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
 class ReminderListView(discord.ui.View):
     """Пагинация списка напоминаний с кнопками удаления и редактирования."""
     def __init__(
-        self, bot, user_id: int, reminders: list, total: int, offset: int = 0
+        self,
+        bot,
+        user_id: int,
+        reminders: list,
+        total: int,
+        offset: int = 0,
+        utc_offset: int = DEFAULT_UTC_OFFSET,
     ) -> None:
         super().__init__(timeout=120)
         self.bot = bot
@@ -122,6 +129,7 @@ class ReminderListView(discord.ui.View):
         self.reminders = reminders
         self.total = total
         self.offset = offset
+        self.utc_offset = utc_offset
         self._build_buttons()
 
     def _build_buttons(self) -> None:
@@ -187,7 +195,7 @@ class ReminderListView(discord.ui.View):
                     "Напоминание не найдено", ephemeral=True
                 )
                 return
-            time_str = reminder.reminder_time.strftime("%d-%m-%Y %H:%M")
+            time_str = format_local(reminder.reminder_time, self.utc_offset)
 
             modal = EditReminderModal(
                 bot=self.bot,
@@ -230,14 +238,19 @@ class ReminderListView(discord.ui.View):
         embed = discord.Embed(title="Ваши напоминания", color=discord.Color.blue())
         page_num = (self.offset // REMINDERS_PER_PAGE) + 1
         total_pages = max(1, (self.total + REMINDERS_PER_PAGE - 1) // REMINDERS_PER_PAGE)
-        embed.set_footer(text=f"Страница {page_num}/{total_pages} • Всего: {self.total}")
+        embed.set_footer(
+            text=(
+                f"Страница {page_num}/{total_pages} • Всего: {self.total} • "
+                f"{format_utc_offset(self.utc_offset)} (изменить: /timezone)"
+            )
+        )
 
         if not self.reminders:
             embed.description = "Нет активных напоминаний"
             return embed
 
         for r in self.reminders:
-            time_str = r.reminder_time.strftime("%d-%m-%Y %H:%M")
+            time_str = format_local(r.reminder_time, self.utc_offset)
             embed.add_field(
                 name=f"`# ID: {r.id}` — {time_str}",
                 value=r.message[:100] + ("..." if len(r.message) > 100 else ""),

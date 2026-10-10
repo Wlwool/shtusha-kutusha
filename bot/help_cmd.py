@@ -27,6 +27,16 @@ def register_help_command(bot: commands.Bot):
         )
 
         embed.add_field(
+            name="/timezone [смещение]",
+            value=(
+                "Задать часовой пояс как смещение от UTC (от -12 до +14).\n"
+                "Примеры: `/timezone +5`, `/timezone -3`.\n"
+                "Без параметра покажет текущий. По умолчанию UTC+3 (Москва)."
+            ),
+            inline=False
+        )
+
+        embed.add_field(
             name="/help_remind",
             value="Инструкция, как пользоваться ботом",
             inline=False
@@ -36,7 +46,8 @@ def register_help_command(bot: commands.Bot):
             name="Форматы времени",
             value=(
                 "Относительное: `in 1 hour`, `через 30 минут`, `tomorrow at 9am`\n"
-                "Абсолютное: `18:30`, `15.03.2025 09:00`, `15/03/2025 09:00`, `15-03-2025 09:00`"
+                "Абсолютное: `18:30`, `15.03.2025 09:00`, `15/03/2025 09:00`, `15-03-2025 09:00`\n"
+                "Время указывается по вашему часовому поясу (изменить: `/timezone`)"
             ),
             inline=False
         )

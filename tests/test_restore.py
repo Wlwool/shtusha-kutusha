@@ -22,7 +22,7 @@ async def fake_bot():
 
 
 async def test_restore_sends_overdue_and_schedules_future(fake_bot):
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(datetime.UTC)
     overdue_id = await add_reminder(1, 10, now - datetime.timedelta(hours=2), "просрочено")
     future_id = await add_reminder(2, 20, now + datetime.timedelta(hours=2), "будущее")
 

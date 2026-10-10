@@ -10,7 +10,7 @@ import discord
 import pytest
 
 from bot import delivery
-from bot.database import add_reminder, get_reminder
+from bot.database import add_reminder, get_reminder, set_utc_offset
 
 
 def _http_error(cls: type[discord.HTTPException], status: int) -> discord.HTTPException:
@@ -39,7 +39,7 @@ def fake_bot(channel, user):
 
 
 async def _add(minutes_ago: float, message: str = "Позвонить") -> int:
-    when = datetime.datetime.now() - datetime.timedelta(minutes=minutes_ago)
+    when = datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=minutes_ago)
     return await add_reminder(1, 10, when, message)
 
 
@@ -145,3 +145,28 @@ async def test_deliver_keeps_reminder_when_send_is_forbidden(fake_bot, channel):
     await delivery.deliver_reminder(fake_bot, 1, 10, "Позвонить", rid, 1)
 
     assert await get_reminder(rid) is not None
+
+
+async def test_late_note_shows_time_in_users_timezone(fake_bot, user):
+    await set_utc_offset(1, 5)
+    scheduled = datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=10)
+    rid = await add_reminder(1, 10, scheduled, "Встреча")
+    expected = scheduled.astimezone(datetime.timezone(datetime.timedelta(hours=5)))
+
+    await delivery.deliver_reminder(fake_bot, 1, 10, "Встреча", rid, 1)
+
+    text = user.send.await_args.args[0]
+    assert f"{expected:%d-%m-%Y %H:%M}" in text
+    assert "UTC+5" in text
+
+
+async def test_late_note_uses_moscow_by_default(fake_bot, user):
+    scheduled = datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=10)
+    rid = await add_reminder(1, 10, scheduled, "Встреча")
+    expected = scheduled.astimezone(datetime.timezone(datetime.timedelta(hours=3)))
+
+    await delivery.deliver_reminder(fake_bot, 1, 10, "Встреча", rid, 1)
+
+    text = user.send.await_args.args[0]
+    assert f"{expected:%d-%m-%Y %H:%M}" in text
+    assert "UTC+3" in text
