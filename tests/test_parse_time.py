@@ -1,4 +1,5 @@
 """Тесты разбора времени с учётом часового пояса пользователя."""
+
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest

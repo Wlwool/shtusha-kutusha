@@ -1,4 +1,5 @@
-"""Тесты StatusCog: запуск статуса и повторный on_ready."""
+"""Тесты StatusCog: запуск статуса и повторный on_ready"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
