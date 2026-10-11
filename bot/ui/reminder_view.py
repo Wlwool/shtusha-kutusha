@@ -105,10 +105,15 @@ class EditReminderModal(discord.ui.Modal, title="Редактировать на
                 )
                 return
 
-            assert interaction.channel is not None  # команда вызвана из канала
+            reminder = await get_reminder(self.reminder_id)
+            if reminder is None:
+                await interaction.response.send_message(
+                    "Напоминание не найдено", ephemeral=True
+                )
+                return
             job_args = (
                 interaction.user.id,
-                interaction.channel.id,
+                reminder.channel_id,
                 self.message_input.value,
                 self.reminder_id,
                 new_version,
