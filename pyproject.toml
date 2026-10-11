@@ -1,6 +1,6 @@
 [project]
 name = "shtusha-kutusha"
-version = "0.1.2"
+version = "0.2.0"
 description = "Discord reminder bot"
 requires-python = ">=3.13"
 dependencies = [
